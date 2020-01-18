@@ -30,7 +30,7 @@
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::{Cell, RefCell},
-    fmt,
+    fmt, mem, ptr, slice,
 };
 
 mod machine;
@@ -39,6 +39,9 @@ pub use checkers_macros::test;
 
 thread_local! {
     /// Thread-local state required by the allocator.
+    ///
+    /// Feel free to interact with this directly, but it's primarily used
+    /// through the [`test`](crate::test) macro.
     pub static STATE: ThreadLocalState = ThreadLocalState::new();
 }
 
@@ -122,27 +125,83 @@ macro_rules! with {
 
 /// A fixed-size collection of allocations.
 pub struct Events {
-    events: [Event; 1024],
+    ptr: *mut Event,
     len: usize,
+    cap: usize,
 }
+
+unsafe impl Sync for Events {}
 
 impl Events {
     /// Construct a new collection of allocations.
     const fn new() -> Self {
         Self {
-            events: [Event::Empty; 1024],
+            ptr: ptr::null_mut(),
             len: 0,
+            cap: 0,
+        }
+    }
+
+    /// Grow the underlying collection.
+    fn grow(&mut self) {
+        let cap = self
+            .cap
+            .checked_mul(2)
+            .expect("failed to calculate grown capacity");
+        self.reserve(cap);
+    }
+
+    /// Access the layout of the collection
+    unsafe fn layout(&self) -> Layout {
+        let bytes_cap = self
+            .cap
+            .checked_mul(mem::size_of::<Event>())
+            .expect("failed to calculate capacity");
+        Layout::from_size_align_unchecked(bytes_cap, mem::align_of::<Event>())
+    }
+
+    /// Reserve and make sure there is enough space to store the specified
+    /// number of events.
+    pub fn reserve(&mut self, cap: usize) {
+        if self.cap >= cap {
+            return;
+        }
+
+        if self.ptr == ptr::null_mut() {
+            unsafe {
+                let layout = self.layout();
+                let new_ptr = System.alloc(layout);
+                self.ptr = new_ptr as *mut Event;
+                self.cap = cap;
+            }
+
+            return;
+        }
+
+        unsafe {
+            let layout = self.layout();
+            let new_size = cap
+                .checked_mul(mem::size_of::<Event>())
+                .expect("failed to calculate capacity");
+            let new_ptr = System.realloc(self.ptr as *mut u8, layout, new_size);
+            self.ptr = new_ptr as *mut Event;
+            self.cap = cap;
         }
     }
 
     /// Fetch all allocations as a slice.
     pub fn as_slice(&self) -> &[Event] {
-        &self.events[..self.len]
+        unsafe { slice::from_raw_parts(self.ptr, self.len) }
+    }
+
+    /// Fetch all allocations as a slice.
+    pub fn as_slice_mut(&self) -> &mut [Event] {
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 
     /// Clear the collection of events.
     pub fn clear(&mut self) {
-        for e in &mut self.events[..self.len] {
+        for e in self.as_slice_mut() {
             *e = Event::Empty;
         }
 
@@ -150,29 +209,20 @@ impl Events {
     }
 
     /// Push a single allocation.
-    fn allocation(&mut self, ptr: Pointer, layout: Layout) {
+    fn push(&mut self, event: Event) {
         let n = self.len;
-        assert!(n < 1024);
-        self.len += 1;
 
-        self.events[n] = Event::Allocation {
-            ptr,
-            size: layout.size(),
-            align: layout.align(),
-        };
-    }
+        if n >= self.cap {
+            self.grow();
+        }
 
-    /// Push a single deallocation.
-    fn deallocation(&mut self, ptr: Pointer, layout: Layout) {
-        let n = self.len;
-        assert!(n < 1024);
-        self.len += 1;
+        assert!(n < self.cap);
+        assert!(self.ptr != ptr::null_mut());
 
-        self.events[n] = Event::Deallocation {
-            ptr,
-            size: layout.size(),
-            align: layout.align(),
-        };
+        unsafe {
+            *self.ptr.add(n) = event;
+            self.len += 1;
+        }
     }
 }
 
@@ -208,6 +258,11 @@ impl ThreadLocalState {
                 self.0.enabled.set(false);
             }
         }
+    }
+
+    /// Reserve the specified number of events.
+    pub fn reserve(&self, cap: usize) {
+        self.events.borrow_mut().reserve(cap);
     }
 }
 
@@ -298,7 +353,11 @@ unsafe impl GlobalAlloc for Allocator {
 
         STATE.with(move |state| {
             if state.enabled.get() {
-                state.events.borrow_mut().allocation(ptr.into(), layout);
+                state.events.borrow_mut().push(Event::Allocation {
+                    ptr: ptr.into(),
+                    size: layout.size(),
+                    align: layout.align(),
+                });
             }
         });
 
@@ -308,7 +367,11 @@ unsafe impl GlobalAlloc for Allocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         STATE.with(move |state| {
             if state.enabled.get() {
-                state.events.borrow_mut().deallocation(ptr.into(), layout);
+                state.events.borrow_mut().push(Event::Deallocation {
+                    ptr: ptr.into(),
+                    size: layout.size(),
+                    align: layout.align(),
+                });
             }
         });
 

@@ -2,6 +2,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
+use std::num::NonZeroUsize;
 
 /// Marks a function to be run as a test in a checkers test suite.
 /// 
@@ -42,27 +43,54 @@ pub fn test(args: TokenStream, item: TokenStream) -> TokenStream {
             .into();
     }
 
+    let mut capacity = NonZeroUsize::new(1024).unwrap();
+
     for arg in args {
-        if let syn::NestedMeta::Meta(syn::Meta::Path(path)) = arg {
-            let ident = path.get_ident();
+        if let syn::NestedMeta::Meta(syn::Meta::NameValue(namevalue)) = arg {
+            let ident = namevalue.path.get_ident();
             if ident.is_none() {
                 let msg = "Must have specified ident";
-                return syn::Error::new_spanned(path, msg).to_compile_error().into();
+                return syn::Error::new_spanned(namevalue.path, msg).to_compile_error().into();
             }
             match ident.unwrap().to_string().to_lowercase().as_str() {
+                "capacity" => {
+                    match &namevalue.lit {
+                        syn::Lit::Int(expr) => {
+                            capacity = match expr.base10_parse::<NonZeroUsize>() {
+                                Ok(n) => n,
+                                _ => {
+                                    return syn::Error::new_spanned(
+                                        expr,
+                                        "capacity argument is not valid",
+                                    ).to_compile_error().into();
+                                }
+                            }
+                        }
+                        _ => {
+                            return syn::Error::new_spanned(
+                                namevalue,
+                                "capacity argument must be an int",
+                            ).to_compile_error().into();
+                        }
+                    }
+                },
                 name => {
                     let msg = format!("Unknown attribute {} is specified", name);
-                    return syn::Error::new_spanned(path, msg).to_compile_error().into();
+                    return syn::Error::new_spanned(namevalue.path, msg).to_compile_error().into();
                 }
             }
         }
     }
+
+    let capacity = capacity.get();
 
     let result = quote! {
         #[test]
         #(#attrs)*
         #vis fn #name() #ret {
             checkers::STATE.with(|state| {
+                state.reserve(#capacity);
+
                 state.with(|| {
                     #body
                 });
