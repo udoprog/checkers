@@ -25,7 +25,7 @@ use std::num::NonZeroUsize;
 ///     let _ = Box::into_raw(Box::new(42));
 /// }
 /// ```
-/// 
+///
 /// Reserve capacity for the specified number of events up front:
 ///
 /// ```rust
@@ -46,7 +46,7 @@ use std::num::NonZeroUsize;
 /// ```rust
 /// #[global_allocator]
 /// static CHECKED: checkers::Allocator = checkers::Allocator;
-/// 
+///
 /// fn verify_test_custom_verify(state: &checkers::State) {
 ///    let mut violations = Vec::new();
 ///    state.validate(&mut violations);
