@@ -3,10 +3,10 @@
 //!
 //! # Examples
 //!
-//! You use checkers by installing it's allocator, then making use of
-//! [`checkers::with!`].
+//! You use checkers by installing it's allocator, then making use of either the
+//! [`#[checkers::test]`](attr.test.html) or [`checkers::with!`] macros.
 //!
-//! [`checkers::with!`]: with!
+//! [`checkers::with!`]: macro.with.html
 //!
 //! ```rust,no_run
 //! #[global_allocator]

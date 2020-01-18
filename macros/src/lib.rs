@@ -3,7 +3,18 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
 
-/// Marks a test function to be executed in a checkers environment.
+/// Marks a function to be run as a test in a checkers test suite.
+/// 
+/// # Examples
+/// 
+/// ```rust
+/// # use checkers_macros as checkers;
+/// #
+/// #[checkers::test]
+/// fn test_leaky_box() {
+///     let _ = Box::into_raw(Box::new(42));
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn test(args: TokenStream, item: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(item as syn::ItemFn);
