@@ -8,15 +8,19 @@
 //!
 //! [`checkers::with!`]: with!
 //!
-//! ```rust
+//! ```rust,no_run
 //! #[global_allocator]
 //! static CHECKED: checkers::Allocator = checkers::Allocator;
 //!
-//! #[test]
+//! #[checkers::test]
 //! fn test_allocations() {
+//!     let _ = Box::into_raw(Box::new(42));
+//! }
+//!
+//! #[test]
+//! fn test_manually() {
 //!     checkers::with!(|| {
-//!         let mut bytes = vec![10, 20, 30];
-//!         bytes.truncate(2);
+//!         let _ = Box::into_raw(Box::new(42));
 //!     });
 //! }
 //! ```
@@ -29,6 +33,7 @@ use std::{
 
 mod machine;
 pub use self::machine::Machine;
+pub use checkers_macros::test;
 
 thread_local! {
     /// Thread-local state required by the allocator.
@@ -40,10 +45,12 @@ thread_local! {
 /// This currently performs the following tests:
 /// * Checks that each allocation has an exact corresponding deallocation,
 ///   and that it happened _after_ the allocation it relates to.
-///
-/// More checks to be enabled in the future:
 /// * That there are no overlapping deallocations / allocations.
-/// * That the _global_ timeline matches.
+/// * That the thread-local timeline matches.
+///
+/// Will be enabled in the future:
+/// * Check that the _global_ timeline matches (e.g. memory is sent to a
+///   different thread, where it is de-allocated).
 #[macro_export]
 macro_rules! verify {
     ($state:expr) => {
@@ -54,10 +61,33 @@ macro_rules! verify {
 
         let mut machine = $crate::Machine::default();
 
-        for event in $state.events.borrow().as_slice() {
+        let mut events = $state.events.borrow_mut();
+
+        let mut any_errors = false;
+
+        for event in events.as_slice() {
             if let Err(e) = machine.push(*event) {
-                panic!("{}", e);
+                eprintln!("{}", e);
+                any_errors = true;
             }
+        }
+
+        let regions = machine.trailing_regions();
+
+        if !regions.is_empty() {
+            eprintln!("Leaked regions:");
+
+            for region in regions {
+                eprintln!("{:?}", region);
+            }
+
+            any_errors = true;
+        }
+
+        events.clear();
+
+        if any_errors {
+            panic!("test failed to verify");
         }
     };
 }
@@ -90,7 +120,7 @@ macro_rules! with {
 
 /// A fixed-size collection of allocations.
 pub struct Events {
-    allocs: [Event; 1024],
+    events: [Event; 1024],
     len: usize,
 }
 
@@ -98,9 +128,23 @@ impl Events {
     /// Construct a new collection of allocations.
     const fn new() -> Self {
         Self {
-            allocs: [Event::Empty; 1024],
+            events: [Event::Empty; 1024],
             len: 0,
         }
+    }
+
+    /// Fetch all allocations as a slice.
+    pub fn as_slice(&self) -> &[Event] {
+        &self.events[..self.len]
+    }
+
+    /// Clear the collection of events.
+    pub fn clear(&mut self) {
+        for e in &mut self.events[..self.len] {
+            *e = Event::Empty;
+        }
+
+        self.len = 0;
     }
 
     /// Push a single allocation.
@@ -109,7 +153,7 @@ impl Events {
         assert!(n < 1024);
         self.len += 1;
 
-        self.allocs[n] = Event::Allocation {
+        self.events[n] = Event::Allocation {
             ptr,
             size: layout.size(),
             align: layout.align(),
@@ -122,16 +166,11 @@ impl Events {
         assert!(n < 1024);
         self.len += 1;
 
-        self.allocs[n] = Event::Deallocation {
+        self.events[n] = Event::Deallocation {
             ptr,
             size: layout.size(),
             align: layout.align(),
         };
-    }
-
-    /// Fetch all allocations as a slice.
-    pub fn as_slice(&self) -> &[Event] {
-        &self.allocs[..self.len]
     }
 }
 

@@ -1,6 +1,9 @@
 //! Fake machine implementation to validate an allocation history.
 
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{btree_map as map, BTreeMap},
+    fmt,
+};
 
 use crate::{Event, Pointer};
 
@@ -23,6 +26,7 @@ pub enum PushError {
     },
     DeallocateMissing {
         requested: Region,
+        overlaps: Vec<Region>,
         regions: Vec<Region>,
     },
 }
@@ -60,10 +64,10 @@ impl fmt::Display for PushError {
                 "tried to deallocate misaligned region. requested: {:?}, existing: {:?}.",
                 requested, existing
             ),
-            Self::DeallocateMissing { requested, regions } => write!(
+            Self::DeallocateMissing { requested, overlaps, regions } => write!(
                 fmt,
-                "tried to deallocate missing region. requested: {:?}, regions: {:?}.",
-                requested, regions
+                "tried to deallocate missing region. requested: {:?}, overlaps: {:?}, regions: {:?}.",
+                requested, overlaps, regions
             ),
         }
     }
@@ -192,19 +196,21 @@ impl Machine {
                     return Err(PushError::AllocationMisaligned { requested });
                 }
 
-                if let Some(existing) = find_region_overlaps(&self.regions, requested) {
+                if let Some(existing) = find_region_overlaps(&self.regions, requested).next() {
                     return Err(PushError::AllocationOverlaps {
                         requested,
                         existing,
                     });
                 }
 
-                self.regions.insert(ptr, requested);
+                debug_assert!(self.regions.insert(ptr, requested).is_none());
             }
             Event::Deallocation { ptr, size, align } => {
                 let requested = Region::new(ptr, size, align);
 
-                if let Some(existing) = find_region_overlaps(&self.regions, requested) {
+                if let map::Entry::Occupied(entry) = self.regions.entry(ptr) {
+                    let existing = *entry.get();
+
                     if !existing.is_same_region_as(requested) {
                         return Err(PushError::DeallocateIncomplete {
                             requested,
@@ -218,36 +224,41 @@ impl Machine {
                             existing,
                         });
                     }
-                } else {
-                    return Err(PushError::DeallocateMissing {
-                        requested,
-                        regions: self.regions.values().copied().collect(),
-                    });
+
+                    entry.remove_entry();
+                    return Ok(());
                 }
 
-                self.regions.remove(&ptr);
+                let overlaps = find_region_overlaps(&self.regions, requested).collect();
+
+                return Err(PushError::DeallocateMissing {
+                    requested,
+                    overlaps,
+                    regions: self.trailing_regions(),
+                });
             }
         }
 
         return Ok(());
 
-        fn find_region_overlaps(
-            regions: &BTreeMap<Pointer, Region>,
+        fn find_region_overlaps<'a>(
+            regions: &'a BTreeMap<Pointer, Region>,
             needle: Region,
-        ) -> Option<Region> {
-            if let Some((_, &region)) = regions.range(..=needle.ptr).next_back() {
-                if region.overlaps(needle) {
-                    return Some(region);
-                }
-            }
+        ) -> impl Iterator<Item = Region> + 'a {
+            let head = regions
+                .range(..=needle.ptr)
+                .take_while(move |(_, &r)| r.overlaps(needle));
 
-            if let Some((_, &region)) = regions.range(needle.ptr..).next() {
-                if region.overlaps(needle) {
-                    return Some(region);
-                }
-            }
+            let tail = regions
+                .range(needle.ptr..)
+                .take_while(move |(_, &r)| r.overlaps(needle));
 
-            None
+            head.chain(tail).map(|(_, &r)| r)
         }
+    }
+
+    /// Access all trailing regions (ones which have not been deallocated).
+    pub fn trailing_regions(&self) -> Vec<Region> {
+        self.regions.values().copied().collect()
     }
 }

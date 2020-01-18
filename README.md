@@ -15,11 +15,15 @@ You use checkers by installing it's allocator, then making use of
 #[global_allocator]
 static CHECKED: checkers::Allocator = checkers::Allocator;
 
-#[test]
+#[checkers::test]
 fn test_allocations() {
+    let _ = Box::into_raw(Box::new(42));
+}
+
+#[test]
+fn test_manually() {
     checkers::with!(|| {
-        let mut bytes = vec![10, 20, 30];
-        bytes.truncate(2);
+        let _ = Box::into_raw(Box::new(42));
     });
 }
 ```
