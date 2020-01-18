@@ -3,10 +3,12 @@
 //!
 //! # Examples
 //!
-//! You use checkers by installing it's allocator, then making use of either the
-//! [`#[checkers::test]`](attr.test.html) or [`checkers::with!`] macros.
+//! You use checkers by installing [`checkers::Allocator`] as your allocator,
+//! then making use of either the [`#[checkers::test]`](crate::test) or
+//! [`checkers::with!`] macros.
 //!
-//! [`checkers::with!`]: macro.with.html
+//! [`checkers::Allocator`]: crate::Allocator
+//! [`checkers::with!`]: crate::with
 //!
 //! ```rust,no_run
 //! #[global_allocator]
@@ -276,6 +278,11 @@ pub enum Event {
 }
 
 /// Allocator that needs to be installed.
+///
+/// Delegates allocations to [`std::alloc::System`] (this might be configurable
+/// in the future).
+///
+/// [`std::alloc::System`]: std::alloc::System
 ///
 /// You install it by doing:
 ///

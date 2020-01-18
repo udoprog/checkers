@@ -2,7 +2,7 @@
 # It is not intended for manual editing.
 [[package]]
 name = "checkers"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "checkers-macros 0.1.1",
 ]

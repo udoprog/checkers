@@ -8,8 +8,8 @@ Checkers is a simple allocation checker for Rust that runs purely inside of Rust
 
 # Examples
 
-You use checkers by installing it's allocator, then making use of either the
-`#[checkers::test]` or `checkers::with!` macros.
+You use checkers by installing `checkers::Allocator` as your allocator, then
+making use of either the `#[checkers::test]` or `checkers::with!` macros.
 
 ```rust
 #[global_allocator]
