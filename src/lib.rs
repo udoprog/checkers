@@ -1,30 +1,46 @@
-//! Checkers is a simple allocation checker for Rust that runs purely inside of
-//! Rust.
+//! Checkers is a simple allocation checker for Rust. It plugs in through the
+//! [global allocator] API and can sanity check your unsafe Rust during
+//! integration testing.
+//!
+//! [global allocator]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html
+//!
+//! It can check for the following things:
+//! * Double-frees.
+//! * Attempts to free regions which are not allocated.
+//! * Underlying allocator producting regions not adhering to the requested layout.
+//!   Namely size and alignment.
+//! * Other arbitrary user-defined conditions ([see test]).
+//!
+//! What it can't do:
+//! * Test multithreaded code. Since the allocator is global, it is difficult to
+//!  scope the state for each test case.
+//!
+//! [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 //!
 //! # Examples
 //!
 //! You use checkers by installing [`checkers::Allocator`] as your allocator,
-//! then making use of either the [`#[checkers::test]`](crate::test) or
+//! then making use of either the [`#[checkers::test]`](attr.test.html) or
 //! [`checkers::with!`] macros.
 //!
 //! [`checkers::Allocator`]: crate::Allocator
-//! [`checkers::with!`]: crate::with
+//! [`checkers::with!`]: macro.with.html
 //!
 //! ```rust,no_run
 //! #[global_allocator]
-//! static CHECKED: checkers::Allocator = checkers::Allocator;
+//! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
 //!
 //! #[checkers::test]
-//! fn test_allocations() {
+//! fn test_leak_box() {
 //!     let _ = Box::into_raw(Box::new(42));
 //! }
+//! ```
 //!
-//! #[test]
-//! fn test_manually() {
-//!     checkers::with!(|| {
-//!         let _ = Box::into_raw(Box::new(42));
-//!     });
-//! }
+//! The above would result in the following test output:
+//!
+//! ```text
+//! dangling region: 0x226e5784f30-0x226e5784f40 (size: 16, align: 8).
+//! thread 'test_leak_box' panicked at 'allocation checks failed', tests\leaky_tests.rs:4:1
 //! ```
 
 use std::{
