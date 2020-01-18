@@ -30,11 +30,11 @@
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::{Cell, RefCell},
-    fmt, mem, ptr, slice,
+    fmt, thread,
 };
 
 mod machine;
-pub use self::machine::Machine;
+pub use self::machine::{Machine, Region, Violation};
 pub use checkers_macros::test;
 
 thread_local! {
@@ -42,7 +42,8 @@ thread_local! {
     ///
     /// Feel free to interact with this directly, but it's primarily used
     /// through the [`test`](crate::test) macro.
-    pub static STATE: ThreadLocalState = ThreadLocalState::new();
+    pub static STATE: RefCell<State> = RefCell::new(State::new());
+    pub static MUTED: Cell<bool> = Cell::new(true);
 }
 
 /// Verify the state of the allocator.
@@ -59,215 +60,132 @@ thread_local! {
 #[macro_export]
 macro_rules! verify {
     ($state:expr) => {
-        assert!(
-            !$state.enabled.get(),
-            "Cannot verify while allocator tracking is enabled"
-        );
+        let mut validations = Vec::new();
+        $state.validate(&mut validations);
 
-        let mut machine = $crate::Machine::default();
-
-        let mut events = $state.events.borrow_mut();
-
-        let mut any_errors = false;
-
-        for event in events.as_slice() {
-            if let Err(e) = machine.push(*event) {
-                eprintln!("{}", e);
-                any_errors = true;
-            }
+        for e in &validations {
+            eprintln!("{:?}", e);
         }
 
-        let regions = machine.trailing_regions();
-
-        if !regions.is_empty() {
-            eprintln!("Leaked regions:");
-
-            for region in regions {
-                eprintln!("{:?}", region);
-            }
-
-            any_errors = true;
-        }
-
-        events.clear();
-
-        if any_errors {
+        if !validations.is_empty() {
             panic!("allocation checks failed");
         }
     };
 }
 
-/// Run the given function inside of the allocation checker.
-///
-/// Thread-local checking will be enabled for the duration of the closure, then
-/// disabled and verified at _the end_ of the closure.
+/// Simplified helper macro to run the checkers environment over a closure.
 ///
 /// # Examples
 ///
 /// ```rust
-/// #[test]
-/// fn test_dealloc_layout() {
-///     checkers::with(|| {
-///        let mut bytes = Bytes::from(vec![10, 20, 30]);
-///        bytes.truncate(2);
-///     });
-/// }
+/// checkers::with!(|| {
+///     let _ = Box::into_raw(Box::new(0u128));
+/// });
 /// ```
 #[macro_export]
 macro_rules! with {
     ($f:expr) => {
-        $crate::STATE.with(move |state| {
-            state.with($f);
-            $crate::verify!(state);
+        checkers::STATE.with(|state| state.borrow_mut().clear());
+
+        (|| {
+            let _g = checkers::mute(false);
+            ($f)();
+        })();
+
+        checkers::STATE.with(|state| {
+            $crate::verify!(&mut *state.borrow_mut());
         });
     };
 }
 
 /// A fixed-size collection of allocations.
 pub struct Events {
-    ptr: *mut Event,
-    len: usize,
-    cap: usize,
+    data: Vec<Event>,
 }
-
-unsafe impl Sync for Events {}
 
 impl Events {
     /// Construct a new collection of allocations.
-    const fn new() -> Self {
-        Self {
-            ptr: ptr::null_mut(),
-            len: 0,
-            cap: 0,
-        }
+    pub const fn new() -> Self {
+        Self { data: Vec::new() }
     }
 
-    /// Grow the underlying collection.
-    fn grow(&mut self) {
-        let cap = self
-            .cap
-            .checked_mul(2)
-            .expect("failed to calculate grown capacity");
-        self.reserve(cap);
-    }
-
-    /// Access the layout of the collection
-    unsafe fn layout(&self) -> Layout {
-        Self::layout_with_cap(self.cap)
-    }
-
-    /// Calculate a layout based on the specified cap.
-    unsafe fn layout_with_cap(cap: usize) -> Layout {
-        let bytes_cap = cap
-            .checked_mul(mem::size_of::<Event>())
-            .expect("failed to calculate capacity");
-        Layout::from_size_align_unchecked(bytes_cap, mem::align_of::<Event>())
-    }
-
-    /// Reserve and make sure there is enough space to store the specified
-    /// number of events.
+    /// Reserve extra capacity for the underlying storage.
     pub fn reserve(&mut self, cap: usize) {
-        if self.cap >= cap {
-            return;
-        }
+        self.data.reserve(cap.saturating_sub(self.data.capacity()));
+    }
 
-        if self.ptr == ptr::null_mut() {
-            unsafe {
-                let layout = Self::layout_with_cap(cap);
-                let new_ptr = System.alloc(layout);
-                assert!(new_ptr != ptr::null_mut(), "allocation failed");
-                self.ptr = new_ptr as *mut Event;
-                self.cap = cap;
-            }
-        } else {
-            unsafe {
-                let layout = self.layout();
-                let new_size = cap
-                    .checked_mul(mem::size_of::<Event>())
-                    .expect("failed to calculate capacity");
-
-                let new_ptr = System.realloc(self.ptr as *mut u8, layout, new_size);
-                assert!(!new_ptr.is_null(), "reallocation failed");
-                self.ptr = new_ptr as *mut Event;
-                self.cap = cap;
-            }
-        }
+    /// Access the capacity of the Events container.
+    pub fn capacity(&self) -> usize {
+        self.data.capacity()
     }
 
     /// Fetch all allocations as a slice.
     pub fn as_slice(&self) -> &[Event] {
-        unsafe { slice::from_raw_parts(self.ptr, self.len) }
+        &self.data[..]
     }
 
     /// Fetch all allocations as a slice.
     pub fn as_slice_mut(&mut self) -> &mut [Event] {
-        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
+        &mut self.data[..]
     }
 
     /// Clear the collection of events.
     pub fn clear(&mut self) {
-        for e in self.as_slice_mut() {
-            *e = Event::Empty;
-        }
-
-        self.len = 0;
+        self.data.clear();
     }
 
     /// Push a single allocation.
-    fn push(&mut self, event: Event) {
-        let n = self.len;
+    pub fn push(&mut self, event: Event) {
+        // Note: pushing might allocate, so mute while we are doing that, if we
+        // have to.
 
-        while n >= self.cap {
-            self.grow();
-        }
-
-        assert!(n < self.cap);
-        assert!(self.ptr != ptr::null_mut());
-
-        unsafe {
-            *self.ptr.add(n) = event;
-            self.len += 1;
+        if self.data.capacity() <= self.data.len() {
+            let _g = crate::mute(true);
+            self.data.push(event);
+        } else {
+            self.data.push(event);
         }
     }
 }
 
 /// Structure containing all thread-local state required to use the
 /// single-threaded allocation checker.
-pub struct ThreadLocalState {
-    pub enabled: Cell<bool>,
-    pub events: RefCell<Events>,
+pub struct State {
+    events: Events,
 }
 
-impl ThreadLocalState {
+impl State {
     /// Construct new local state.
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            enabled: Cell::new(false),
-            events: RefCell::new(Events::new()),
-        }
-    }
-
-    /// Wrap the given closure in an enabled allocation tracking state.
-    pub fn with<F>(&self, f: F)
-    where
-        F: FnOnce(),
-    {
-        self.enabled.set(true);
-        let _guard = Guard(self);
-        f();
-
-        struct Guard<'a>(&'a ThreadLocalState);
-
-        impl Drop for Guard<'_> {
-            fn drop(&mut self) {
-                self.0.enabled.set(false);
-            }
+            events: Events::new(),
         }
     }
 
     /// Reserve the specified number of events.
-    pub fn reserve(&self, cap: usize) {
-        self.events.borrow_mut().reserve(cap);
+    pub fn reserve(&mut self, cap: usize) {
+        self.events.reserve(cap);
+    }
+
+    /// Validate the current state and populate the errors collection with any violations
+    /// found.
+    pub fn validate(&self, errors: &mut Vec<Violation>) {
+        let mut machine = Machine::default();
+
+        for event in self.events.as_slice() {
+            if let Err(e) = machine.push(*event) {
+                errors.push(e);
+            }
+        }
+
+        for region in machine.trailing_regions() {
+            errors.push(Violation::DanglingRegion { region });
+        }
+    }
+
+    /// Clear the current collection of events.
+    pub fn clear(&mut self) {
+        self.events.clear();
     }
 }
 
@@ -356,30 +274,49 @@ unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);
 
-        STATE.with(move |state| {
-            if state.enabled.get() {
-                state.events.borrow_mut().push(Event::Allocation {
+        if !thread::panicking() && !crate::is_muted() {
+            STATE.with(move |state| {
+                state.borrow_mut().events.push(Event::Allocation {
                     ptr: ptr.into(),
                     size: layout.size(),
                     align: layout.align(),
                 });
-            }
-        });
+            });
+        }
 
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        STATE.with(move |state| {
-            if state.enabled.get() {
-                state.events.borrow_mut().push(Event::Deallocation {
+        if !thread::panicking() && !crate::is_muted() {
+            STATE.with(move |state| {
+                state.borrow_mut().events.push(Event::Deallocation {
                     ptr: ptr.into(),
                     size: layout.size(),
                     align: layout.align(),
                 });
-            }
-        });
+            });
+        }
 
         System.dealloc(ptr, layout);
+    }
+}
+
+/// Test if the crate is currently muted.
+pub fn is_muted() -> bool {
+    MUTED.with(|s| s.get())
+}
+
+/// Enable muting for the duration of the guard.
+pub fn mute(muted: bool) -> StateGuard {
+    StateGuard(MUTED.with(|s| s.replace(muted)))
+}
+
+/// A helper guard to make sure the state is de-allocated on drop.
+pub struct StateGuard(bool);
+
+impl Drop for StateGuard {
+    fn drop(&mut self) {
+        MUTED.with(|s| s.set(self.0));
     }
 }

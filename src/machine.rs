@@ -7,7 +7,7 @@ use std::{
 
 use crate::{Event, Pointer};
 
-pub enum PushError {
+pub enum Violation {
     EmptyEvent,
     AllocationOverlaps {
         requested: Region,
@@ -27,11 +27,40 @@ pub enum PushError {
     DeallocateMissing {
         requested: Region,
         overlaps: Vec<Region>,
-        regions: Vec<Region>,
+    },
+    DanglingRegion {
+        region: Region,
     },
 }
 
-impl fmt::Display for PushError {
+impl Violation {
+    /// Test that this violation refers to a dangling region and that it matches
+    /// the given predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use checkers::{Region, Violation};
+    /// let violation = Violation::DanglingRegion {
+    ///     region: Region::new(42.into(), 20, 4),
+    /// };
+    /// assert!(violation.is_dangling_region(|r| r.size == 20 && r.align == 4));
+    ///
+    /// let violation = Violation::EmptyEvent;
+    /// assert!(!violation.is_dangling_region(|r| true));
+    /// ```
+    pub fn is_dangling_region<F>(&self, f: F) -> bool
+    where
+        F: FnOnce(Region) -> bool,
+    {
+        match *self {
+            Self::DanglingRegion { region } => f(region),
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Debug for Violation {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyEvent => write!(fmt, "tried to push empty event."),
@@ -64,33 +93,24 @@ impl fmt::Display for PushError {
                 "tried to deallocate misaligned region. requested: {:?}, existing: {:?}.",
                 requested, existing
             ),
-            Self::DeallocateMissing { requested, overlaps, regions } => write!(
+            Self::DeallocateMissing {
+                requested,
+                overlaps,
+            } => write!(
                 fmt,
-                "tried to deallocate missing region. requested: {:?}, overlaps: {:?}, regions: {:?}.",
-                requested, overlaps, regions
+                "tried to deallocate missing region. requested: {:?}, overlaps: {:?}.",
+                requested, overlaps
             ),
+            Self::DanglingRegion { region } => write!(fmt, "dangling region: {:?}.", region,),
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Region {
-    ptr: Pointer,
-    size: usize,
-    align: usize,
-}
-
-impl fmt::Debug for Region {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            fmt,
-            "{:?}-{:?} (size: {}, align: {})",
-            self.ptr,
-            self.ptr.saturating_add(self.size),
-            self.size,
-            self.align,
-        )
-    }
+    pub ptr: Pointer,
+    pub size: usize,
+    pub align: usize,
 }
 
 impl Region {
@@ -106,6 +126,19 @@ impl Region {
     /// Test if regions are the same (minus alignment).
     pub fn is_same_region_as(self, other: Self) -> bool {
         self.ptr == other.ptr && self.size == other.size
+    }
+}
+
+impl fmt::Debug for Region {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            fmt,
+            "{:?}-{:?} (size: {}, align: {})",
+            self.ptr,
+            self.ptr.saturating_add(self.size),
+            self.size,
+            self.align,
+        )
     }
 }
 
@@ -186,18 +219,18 @@ impl Machine {
     ///     align: 1,
     /// }).is_err());
     /// ```
-    pub fn push(&mut self, event: Event) -> Result<(), PushError> {
+    pub fn push(&mut self, event: Event) -> Result<(), Violation> {
         match event {
-            Event::Empty => return Err(PushError::EmptyEvent),
+            Event::Empty => return Err(Violation::EmptyEvent),
             Event::Allocation { ptr, size, align } => {
                 let requested = Region::new(ptr, size, align);
 
                 if !ptr.is_aligned_with(align) {
-                    return Err(PushError::AllocationMisaligned { requested });
+                    return Err(Violation::AllocationMisaligned { requested });
                 }
 
                 if let Some(existing) = find_region_overlaps(&self.regions, requested).next() {
-                    return Err(PushError::AllocationOverlaps {
+                    return Err(Violation::AllocationOverlaps {
                         requested,
                         existing,
                     });
@@ -212,14 +245,14 @@ impl Machine {
                     let existing = *entry.get();
 
                     if !existing.is_same_region_as(requested) {
-                        return Err(PushError::DeallocateIncomplete {
+                        return Err(Violation::DeallocateIncomplete {
                             requested,
                             existing,
                         });
                     }
 
                     if existing.align != requested.align {
-                        return Err(PushError::DeallocateMisaligned {
+                        return Err(Violation::DeallocateMisaligned {
                             requested,
                             existing,
                         });
@@ -231,10 +264,9 @@ impl Machine {
 
                 let overlaps = find_region_overlaps(&self.regions, requested).collect();
 
-                return Err(PushError::DeallocateMissing {
+                return Err(Violation::DeallocateMissing {
                     requested,
                     overlaps,
-                    regions: self.trailing_regions(),
                 });
             }
         }
