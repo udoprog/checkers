@@ -27,6 +27,9 @@ use std::{
     fmt,
 };
 
+mod machine;
+pub use self::machine::Machine;
+
 thread_local! {
     /// Thread-local state required by the allocator.
     pub static STATE: ThreadLocalState = ThreadLocalState::new();
@@ -49,31 +52,14 @@ macro_rules! verify {
             "Cannot verify while allocator tracking is enabled"
         );
 
-        let mut deallocs = $state.deallocs.borrow().as_slice().to_vec();
+        let mut machine = $crate::Machine::default();
 
-        for alloc in $state.allocs.borrow().as_slice() {
-            let index = match deallocs
-                .iter()
-                .position(|d| d.ptr == alloc.ptr && d.layout == alloc.layout)
-            {
-                Some(dealloc) => dealloc,
-                None => panic!(
-                    "No matching deallocation found for allocation {:?} - deallocations: {:?}",
-                    alloc, deallocs
-                ),
-            };
-
-            deallocs.remove(index);
+        for event in $state.events.borrow().as_slice() {
+            if let Err(e) = machine.push(*event) {
+                panic!("{}", e);
+            }
         }
-
-        if !deallocs.is_empty() {
-            panic!(
-                "Found {} deallocations without allocations: {:?}",
-                deallocs.len(),
-                deallocs
-            );
-        }
-    }
+    };
 }
 
 /// Run the given function inside of the allocation checker.
@@ -103,33 +89,48 @@ macro_rules! with {
 }
 
 /// A fixed-size collection of allocations.
-pub struct Allocations {
-    allocs: [AllocationMeta; 1024],
+pub struct Events {
+    allocs: [Event; 1024],
     len: usize,
 }
 
-impl Allocations {
+impl Events {
     /// Construct a new collection of allocations.
     const fn new() -> Self {
         Self {
-            allocs: [AllocationMeta::new(); 1024],
+            allocs: [Event::Empty; 1024],
             len: 0,
         }
     }
 
     /// Push a single allocation.
-    fn push(&mut self, ptr: Pointer, layout: Layout, step: usize) {
+    fn allocation(&mut self, ptr: Pointer, layout: Layout) {
         let n = self.len;
         assert!(n < 1024);
         self.len += 1;
 
-        self.allocs[n].ptr = ptr;
-        self.allocs[n].layout = Some(layout);
-        self.allocs[n].step = step;
+        self.allocs[n] = Event::Allocation {
+            ptr,
+            size: layout.size(),
+            align: layout.align(),
+        };
+    }
+
+    /// Push a single deallocation.
+    fn deallocation(&mut self, ptr: Pointer, layout: Layout) {
+        let n = self.len;
+        assert!(n < 1024);
+        self.len += 1;
+
+        self.allocs[n] = Event::Deallocation {
+            ptr,
+            size: layout.size(),
+            align: layout.align(),
+        };
     }
 
     /// Fetch all allocations as a slice.
-    pub fn as_slice(&self) -> &[AllocationMeta] {
+    pub fn as_slice(&self) -> &[Event] {
         &self.allocs[..self.len]
     }
 }
@@ -138,9 +139,7 @@ impl Allocations {
 /// single-threaded allocation checker.
 pub struct ThreadLocalState {
     pub enabled: Cell<bool>,
-    timeline: Cell<usize>,
-    pub allocs: RefCell<Allocations>,
-    pub deallocs: RefCell<Allocations>,
+    pub events: RefCell<Events>,
 }
 
 impl ThreadLocalState {
@@ -148,9 +147,7 @@ impl ThreadLocalState {
     const fn new() -> Self {
         Self {
             enabled: Cell::new(false),
-            timeline: Cell::new(0),
-            allocs: RefCell::new(Allocations::new()),
-            deallocs: RefCell::new(Allocations::new()),
+            events: RefCell::new(Events::new()),
         }
     }
 
@@ -171,13 +168,6 @@ impl ThreadLocalState {
             }
         }
     }
-
-    /// Step the timeline, returning the next value.
-    pub fn step(&self) -> usize {
-        let n = self.timeline.get() + 1;
-        self.timeline.set(n);
-        n
-    }
 }
 
 /// A type-erased pointer.
@@ -191,6 +181,16 @@ impl Pointer {
     pub const fn new() -> Self {
         Self(0)
     }
+
+    /// Add the given offset to the current pointer.
+    pub fn saturating_add(self, n: usize) -> Self {
+        Self(self.0.saturating_add(n))
+    }
+
+    /// Test if pointer is aligned with the given argument.
+    pub fn is_aligned_with(self, n: usize) -> bool {
+        self.0 % n == 0
+    }
 }
 
 impl fmt::Debug for Pointer {
@@ -200,50 +200,40 @@ impl fmt::Debug for Pointer {
 }
 
 impl From<*mut u8> for Pointer {
-    fn from(value: *mut u8) -> Pointer {
-        Pointer(value as usize)
+    fn from(value: *mut u8) -> Self {
+        Self(value as usize)
+    }
+}
+
+impl From<usize> for Pointer {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
 /// Metadata for a single allocation or deallocation.
-#[derive(Clone, Copy)]
-pub struct AllocationMeta {
-    /// The pointer of the allocation.
-    pub ptr: Pointer,
-    /// The layout of the allocation.
-    pub layout: Option<Layout>,
-    /// The linear step at which this allocation happened.
-    /// This is a global counter which increases for every allocation and
-    /// deallocation, which can be used to verify that they happen in the
-    /// expected order.
-    pub step: usize,
-}
-
-impl fmt::Debug for AllocationMeta {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(layout) = &self.layout {
-            write!(
-                fmt,
-                "{:?} {{size: {}, align: {}}}",
-                &self.ptr,
-                layout.size(),
-                layout.align()
-            )
-        } else {
-            write!(fmt, "{:?} {{?}}", &self.ptr)
-        }
-    }
-}
-
-impl AllocationMeta {
-    /// Construct a new default allocation metadata.
-    const fn new() -> Self {
-        Self {
-            ptr: Pointer::new(),
-            layout: None,
-            step: 0,
-        }
-    }
+#[derive(Debug, Clone, Copy)]
+pub enum Event {
+    /// Placeholder for empty events.
+    Empty,
+    /// An allocation.
+    Allocation {
+        /// The pointer of the allocation.
+        ptr: Pointer,
+        /// The size of the allocation.
+        size: usize,
+        /// The alignment of the allocation.
+        align: usize,
+    },
+    /// A deallocation.
+    Deallocation {
+        /// The pointer of the allocation.
+        ptr: Pointer,
+        /// The size of the allocation.
+        size: usize,
+        /// The alignment of the allocation.
+        align: usize,
+    },
 }
 
 /// Allocator that needs to be installed.
@@ -262,8 +252,7 @@ unsafe impl GlobalAlloc for Allocator {
 
         STATE.with(move |state| {
             if state.enabled.get() {
-                let step = state.step();
-                state.allocs.borrow_mut().push(ptr.into(), layout, step);
+                state.events.borrow_mut().allocation(ptr.into(), layout);
             }
         });
 
@@ -273,8 +262,7 @@ unsafe impl GlobalAlloc for Allocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         STATE.with(move |state| {
             if state.enabled.get() {
-                let step = state.step();
-                state.deallocs.borrow_mut().push(ptr.into(), layout, step);
+                state.events.borrow_mut().deallocation(ptr.into(), layout);
             }
         });
 

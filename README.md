@@ -1,5 +1,9 @@
 # checkers
 
+[![Documentation](https://docs.rs/checkers/badge.svg)](https://docs.rs/checkers)
+[![Crates](https://img.shields.io/crates/v/checkers.svg)](https://crates.io/crates/checkers)
+[![Actions Status](https://github.com/udoprog/checkers/workflows/Rust/badge.svg)](https://github.com/udoprog/checkers/actions)
+
 Checkers is a simple allocation checker for Rust that runs purely inside of Rust.
 
 # Examples
