@@ -43,7 +43,7 @@
 //! ```rust
 //! #[global_allocator]
 //! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
-//! 
+//!
 //! #[checkers::test]
 //! fn test_allocations() {
 //!     let _ = Box::into_raw(Box::new(42));
@@ -68,12 +68,12 @@
 //!     let snapshot = checkers::with(|| {
 //!         let _ = vec![1, 2, 3, 4];
 //!     });
-//! 
+//!
 //!     assert_eq!(2, snapshot.events.len());
-//!     assert!(snapshot.events[0].is_allocation_with(|r| r.size >= 16));
-//!     assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
+//!     assert!(snapshot.events[0].is_alloc_with(|r| r.size >= 16));
+//!     assert!(snapshot.events[1].is_free_with(|a| a.size >= 16));
 //!     assert_eq!(1, snapshot.events.allocations());
-//!     assert_eq!(1, snapshot.events.deallocations());
+//!     assert_eq!(1, snapshot.events.frees());
 //!     assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 //! }
 //! ```
@@ -81,7 +81,7 @@
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::{Cell, RefCell},
-    fmt, thread,
+    fmt,
 };
 
 mod events;
@@ -128,14 +128,14 @@ impl Drop for MuteGuard {
 }
 
 /// Verify the state of the allocator.
-/// 
+///
 /// Note: this macro is used by default if the `verify` parameter is not
 /// specified in [`#[checkers::test]`](attr.test.html).
 ///
 /// Currently performs the following tests:
 /// * Checks that each allocation has an exact corresponding deallocation,
 ///   and that it happened _after_ the allocation it relates to.
-/// * That there are no overlapping deallocations / allocations.
+/// * That there are no overlapping frees / allocations.
 /// * That the thread-local timeline matches.
 ///
 /// # Examples
@@ -161,7 +161,7 @@ macro_rules! verify {
         $state.validate(&mut validations);
 
         for e in &validations {
-            eprintln!("{:?}", e);
+            eprintln!("{}", e);
         }
 
         if !validations.is_empty() {
@@ -191,10 +191,10 @@ pub struct Snapshot {
 /// });
 ///
 /// assert_eq!(2, snapshot.events.len());
-/// assert!(snapshot.events[0].is_allocation_with(|a| a.size >= 16));
-/// assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
+/// assert!(snapshot.events[0].is_alloc_with(|a| a.size >= 16));
+/// assert!(snapshot.events[1].is_free_with(|a| a.size >= 16));
 /// assert_eq!(1, snapshot.events.allocations());
-/// assert_eq!(1, snapshot.events.deallocations());
+/// assert_eq!(1, snapshot.events.frees());
 /// assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 /// ```
 pub fn with<F>(f: F) -> Snapshot
@@ -232,16 +232,22 @@ impl State {
     }
 
     /// Reserve the specified number of events.
+    ///
+    /// See [Events::reserve] for more documentation.
     pub fn reserve(&mut self, cap: usize) {
         self.events.reserve(cap);
     }
 
     /// Clear the current collection of events.
+    ///
+    /// See [Events::clear] for more documentation.
     pub fn clear(&mut self) {
         self.events.clear();
     }
 
     /// Validate the current state.
+    ///
+    /// See [Events::validate] for more documentation.
     pub fn validate(&self, errors: &mut Vec<Violation>) {
         self.events.validate(errors);
     }
@@ -250,7 +256,7 @@ impl State {
 /// A type-erased pointer.
 /// The inner representation is specifically _not_ a raw pointer to avoid
 /// aliasing the pointers handled by the allocator.
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pointer(usize);
 
 impl Pointer {
@@ -270,7 +276,7 @@ impl Pointer {
     }
 }
 
-impl fmt::Debug for Pointer {
+impl fmt::Display for Pointer {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(fmt, "{:?}", &(self.0 as *const ()))
     }
@@ -289,14 +295,12 @@ impl From<usize> for Pointer {
 }
 
 /// Metadata for a single allocation or deallocation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Event {
-    /// Placeholder for empty events.
-    Empty,
     /// An allocation.
-    Allocation(Region),
+    Alloc(Region),
     /// A deallocation.
-    Deallocation(Region),
+    Free(Region),
 }
 
 impl Event {
@@ -306,21 +310,21 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// let event = checkers::Event::Allocation(checkers::Region {
+    /// let event = checkers::Event::Alloc(checkers::Region {
     ///     ptr: 100.into(),
     ///     size: 100,
     ///     align: 4,
     /// });
     ///
-    /// assert!(event.is_allocation_with(|r| r.size == 100 && r.align == 4));
-    /// assert!(!event.is_deallocation_with(|r| r.size == 100 && r.align == 4));
+    /// assert!(event.is_alloc_with(|r| r.size == 100 && r.align == 4));
+    /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
     /// ```
-    pub fn is_allocation_with<F>(self, f: F) -> bool
+    pub fn is_alloc_with<F>(self, f: F) -> bool
     where
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Allocation(region) => f(region),
+            Self::Alloc(region) => f(region),
             _ => false,
         }
     }
@@ -331,21 +335,21 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// let event = checkers::Event::Deallocation(checkers::Region {
+    /// let event = checkers::Event::Free(checkers::Region {
     ///     ptr: 100.into(),
     ///     size: 100,
     ///     align: 4,
     /// });
     ///
-    /// assert!(!event.is_allocation_with(|r| r.size == 100 && r.align == 4));
-    /// assert!(event.is_deallocation_with(|r| r.size == 100 && r.align == 4));
+    /// assert!(!event.is_alloc_with(|r| r.size == 100 && r.align == 4));
+    /// assert!(event.is_free_with(|r| r.size == 100 && r.align == 4));
     /// ```
-    pub fn is_deallocation_with<F>(self, f: F) -> bool
+    pub fn is_free_with<F>(self, f: F) -> bool
     where
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Deallocation(region) => f(region),
+            Self::Free(region) => f(region),
             _ => false,
         }
     }
@@ -370,9 +374,9 @@ unsafe impl GlobalAlloc for Allocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);
 
-        if !thread::panicking() && !crate::is_muted() {
+        if !crate::is_muted() {
             crate::with_state(move |s| {
-                s.borrow_mut().events.push(Event::Allocation(Region {
+                s.borrow_mut().events.push(Event::Alloc(Region {
                     ptr: ptr.into(),
                     size: layout.size(),
                     align: layout.align(),
@@ -384,9 +388,9 @@ unsafe impl GlobalAlloc for Allocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if !thread::panicking() && !crate::is_muted() {
+        if !crate::is_muted() {
             crate::with_state(move |s| {
-                s.borrow_mut().events.push(Event::Deallocation(Region {
+                s.borrow_mut().events.push(Event::Free(Region {
                     ptr: ptr.into(),
                     size: layout.size(),
                     align: layout.align(),

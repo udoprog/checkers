@@ -8,9 +8,9 @@ fn test_event_inspection() {
     });
 
     assert_eq!(2, snapshot.events.len());
-    assert!(snapshot.events[0].is_allocation_with(|r| r.size >= 16));
-    assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
+    assert!(snapshot.events[0].is_alloc_with(|r| r.size >= 16));
+    assert!(snapshot.events[1].is_free_with(|a| a.size >= 16));
     assert_eq!(1, snapshot.events.allocations());
-    assert_eq!(1, snapshot.events.deallocations());
+    assert_eq!(1, snapshot.events.frees());
     assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 }

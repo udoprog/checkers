@@ -17,7 +17,7 @@ fn verify_test_custom_verify(state: &mut checkers::State) {
     let mut violations = Vec::new();
     state.validate(&mut violations);
     assert_eq!(1, violations.len());
-    assert!(violations[0].is_dangling_region(|region| region.size == 20 && region.align == 4));
+    assert!(violations[0].is_leaked_with(|region| region.size == 20 && region.align == 4));
 }
 
 #[checkers::test(verify = "verify_test_custom_verify")]

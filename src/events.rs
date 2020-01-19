@@ -53,43 +53,75 @@ impl Events {
         self.data.clear();
     }
 
-    /// Push a single allocation.
+    /// Push a single event into the collection of events.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Events, Event, Region};
+    /// let mut events = Events::new();
+    /// let event = Event::Alloc(Region::new(10.into(), 10, 1));
+    /// events.push(event);
+    /// assert_eq!(event, events[0]);
+    /// ```
     pub fn push(&mut self, event: Event) {
-        // Note: pushing might allocate, so mute while we are doing that, if we
-        // have to.
-
-        if self.data.capacity() <= self.data.len() {
+        // Note: pushing into an at-capacity collection would allocate, so we
+        // take care of it here, while muting the tracker.
+        if self.data.capacity() == self.data.len() {
             let _g = crate::mute_guard(true);
-            self.data.push(event);
-        } else {
-            self.data.push(event);
+            self.data.reserve(1);
         }
+
+        self.data.push(event);
     }
 
     /// Count the number of allocations in this collection of events.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Events, Event, Region};
+    /// let mut events = Events::new();
+    /// events.push(Event::Alloc(Region::new(10.into(), 10, 1)));
+    /// assert_eq!(1, events.allocations());
+    /// assert_eq!(0, events.frees());
+    /// ```
     pub fn allocations(&self) -> usize {
         self.data
             .iter()
             .map(|e| match e {
-                Event::Allocation { .. } => 1,
+                Event::Alloc { .. } => 1,
                 _ => 0,
             })
             .sum()
     }
 
-    /// Count the number of deallocations in this collection of events.
-    pub fn deallocations(&self) -> usize {
+    /// Count the number of frees in this collection of events.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Events, Event, Region};
+    /// let mut events = Events::new();
+    /// events.push(Event::Free(Region::new(10.into(), 10, 1)));
+    /// assert_eq!(0, events.allocations());
+    /// assert_eq!(1, events.frees());
+    /// ```
+    pub fn frees(&self) -> usize {
         self.data
             .iter()
             .map(|e| match e {
-                Event::Deallocation { .. } => 1,
+                Event::Free { .. } => 1,
                 _ => 0,
             })
             .sum()
     }
 
-    /// Validate the current state and populate the errors collection with any violations
-    /// found.
+    /// Validate the current state and populate the errors collection with any
+    /// violations found.
+    ///
+    /// See [Machine::push] for more details on the kind of validation errors
+    /// that can be raised.
     pub fn validate(&self, errors: &mut Vec<Violation>) {
         let mut machine = Machine::default();
 
@@ -100,13 +132,24 @@ impl Events {
         }
 
         for region in machine.trailing_regions() {
-            errors.push(Violation::DanglingRegion { region });
+            errors.push(Violation::Leaked { region });
         }
     }
 
     /// Max amount of memory used according to this event history.
     ///
     /// Returns the first violation encountered if the history is not sound.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Events, Event, Region};
+    /// let mut events = Events::new();
+    /// events.push(Event::Alloc(Region::new(0x10.into(), 0x10, 1)));
+    /// events.push(Event::Alloc(Region::new(0x20.into(), 0x10, 1)));
+    /// events.push(Event::Free(Region::new(0x10.into(), 0x10, 1)));
+    /// assert_eq!(Ok(0x20), events.max_memory_used());
+    /// ```
     pub fn max_memory_used(&self) -> Result<usize, Violation> {
         let mut machine = Machine::default();
 
