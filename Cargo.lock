@@ -2,14 +2,14 @@
 # It is not intended for manual editing.
 [[package]]
 name = "checkers"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
- "checkers-macros 0.2.1",
+ "checkers-macros 0.3.0",
 ]
 
 [[package]]
 name = "checkers-macros"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 1.0.13 (registry+https://github.com/rust-lang/crates.io-index)",

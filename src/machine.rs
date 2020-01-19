@@ -7,6 +7,7 @@ use std::{
 
 use crate::{Event, Pointer};
 
+#[derive(Clone, PartialEq, Eq)]
 pub enum Violation {
     EmptyEvent,
     AllocationOverlaps {
@@ -108,8 +109,11 @@ impl fmt::Debug for Violation {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Region {
+    /// The pointer of the allocation.
     pub ptr: Pointer,
+    /// The size of the allocation.
     pub size: usize,
+    /// The alignment of the allocation.
     pub align: usize,
 }
 
@@ -147,6 +151,8 @@ impl fmt::Debug for Region {
 pub struct Machine {
     /// Used memory regions.
     regions: BTreeMap<Pointer, Region>,
+    /// Current memory used according to allocations.
+    pub memory_used: usize,
 }
 
 impl Machine {
@@ -157,75 +163,41 @@ impl Machine {
     /// Checks for a double-free:
     ///
     /// ```rust
-    /// use checkers::{Event, Machine};
+    /// use checkers::{Event::*, Region, Machine};
     ///
     /// let mut machine = Machine::default();
     ///
-    /// assert!(machine.push(Event::Allocation {
-    ///     ptr: 0.into(),
-    ///     size: 2,
-    ///     align: 1,
-    /// }).is_ok());
-    ///
-    /// assert!(machine.push(Event::Deallocation {
-    ///     ptr: 0.into(),
-    ///     size: 2,
-    ///     align: 1,
-    /// }).is_ok());
-    ///
-    /// assert!(machine.push(Event::Deallocation {
-    ///     ptr: 0.into(),
-    ///     size: 2,
-    ///     align: 1,
-    /// }).is_err());
+    /// assert!(machine.push(Allocation(Region::new(0.into(), 2, 1))).is_ok());
+    /// assert!(machine.push(Deallocation(Region::new(0.into(), 2, 1))).is_ok());
+    /// assert!(machine.push(Deallocation(Region::new(0.into(), 2, 1))).is_err());
     /// ```
     ///
     /// Checks for a misaligned allocation:
     ///
     /// ```rust
-    /// use checkers::{Event, Machine};
+    /// use checkers::{Event::*, Region, Machine};
     ///
     /// let mut machine = Machine::default();
     ///
-    /// assert!(machine.push(Event::Allocation {
-    ///     ptr: 5.into(),
-    ///     size: 2,
-    ///     align: 4,
-    /// }).is_err());
+    /// assert!(machine.push(Allocation(Region::new(5.into(), 2, 4))).is_err());
     /// ```
     ///
     /// Tries to deallocate part of other region:
     ///
     /// ```rust
-    /// use checkers::{Event, Machine};
+    /// use checkers::{Event::*, Region, Machine};
     ///
     /// let mut machine = Machine::default();
     ///
-    /// assert!(machine.push(Event::Allocation {
-    ///     ptr: 100.into(),
-    ///     size: 100,
-    ///     align: 1,
-    /// }).is_ok());
-    ///
-    /// assert!(machine.push(Event::Deallocation {
-    ///     ptr: 150.into(),
-    ///     size: 50,
-    ///     align: 1,
-    /// }).is_err());
-    ///
-    /// assert!(machine.push(Event::Deallocation {
-    ///     ptr: 100.into(),
-    ///     size: 50,
-    ///     align: 1,
-    /// }).is_err());
+    /// assert!(machine.push(Allocation(Region::new(100.into(), 100, 1))).is_ok());
+    /// assert!(machine.push(Deallocation(Region::new(150.into(), 50, 1))).is_err());
+    /// assert!(machine.push(Deallocation(Region::new(100.into(), 50, 1))).is_err());
     /// ```
     pub fn push(&mut self, event: Event) -> Result<(), Violation> {
         match event {
             Event::Empty => return Err(Violation::EmptyEvent),
-            Event::Allocation { ptr, size, align } => {
-                let requested = Region::new(ptr, size, align);
-
-                if !ptr.is_aligned_with(align) {
+            Event::Allocation(requested) => {
+                if !requested.ptr.is_aligned_with(requested.align) {
                     return Err(Violation::AllocationMisaligned { requested });
                 }
 
@@ -236,12 +208,11 @@ impl Machine {
                     });
                 }
 
-                debug_assert!(self.regions.insert(ptr, requested).is_none());
+                self.memory_used = self.memory_used.saturating_add(requested.size);
+                debug_assert!(self.regions.insert(requested.ptr, requested).is_none());
             }
-            Event::Deallocation { ptr, size, align } => {
-                let requested = Region::new(ptr, size, align);
-
-                if let map::Entry::Occupied(entry) = self.regions.entry(ptr) {
+            Event::Deallocation(requested) => {
+                if let map::Entry::Occupied(entry) = self.regions.entry(requested.ptr) {
                     let existing = *entry.get();
 
                     if !existing.is_same_region_as(requested) {
@@ -258,7 +229,8 @@ impl Machine {
                         });
                     }
 
-                    entry.remove_entry();
+                    let (_, region) = entry.remove_entry();
+                    self.memory_used = self.memory_used.saturating_sub(region.size);
                     return Ok(());
                 }
 

@@ -172,19 +172,19 @@ pub fn test(args: TokenStream, item: TokenStream) -> TokenStream {
         #[test]
         #(#attrs)*
         #vis fn #name() #ret {
-            checkers::STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                state.clear();
-                state.reserve(#capacity);
-            });
+            checkers::with_state(|s| {
+                {
+                    let mut s = s.borrow_mut();
+                    s.clear();
+                    s.reserve(#capacity);
+                }
 
-            (|| {
-                let _g = checkers::mute(false);
-                #body
-            })();
+                (|| {
+                    let _g = checkers::mute_guard(false);
+                    #body
+                })();
 
-            checkers::STATE.with(|state| {
-                let state = &mut *state.borrow_mut();
+                let state = &mut *s.borrow_mut();
                 #verify
             });
         }

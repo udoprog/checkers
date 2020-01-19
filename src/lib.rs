@@ -20,11 +20,11 @@
 //! # Examples
 //!
 //! You use checkers by installing [`checkers::Allocator`] as your allocator,
-//! then making use of either the [`#[checkers::test]`](attr.test.html) or
-//! [`checkers::with!`] macros.
+//! then making use of either the [`#[checkers::test]`](attr.test.html) or the
+//! [`checkers::with`] function.
 //!
 //! [`checkers::Allocator`]: crate::Allocator
-//! [`checkers::with!`]: macro.with.html
+//! [`checkers::with`]: crate::with
 //!
 //! ```rust,no_run
 //! #[global_allocator]
@@ -42,6 +42,24 @@
 //! dangling region: 0x226e5784f30-0x226e5784f40 (size: 16, align: 8).
 //! thread 'test_leak_box' panicked at 'allocation checks failed', tests\leaky_tests.rs:4:1
 //! ```
+//!
+//! With `checkers::with`, we can perform more detailed diagnostics:
+//!
+//! ```rust
+//! #[global_allocator]
+//! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+//!
+//! let snapshot = checkers::with(|| {
+//!     let _ = vec![1, 2, 3, 4];
+//! });
+//!
+//! assert_eq!(2, snapshot.events.len());
+//! assert!(snapshot.events[0].is_allocation_with(|r| r.size >= 16));
+//! assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
+//! assert_eq!(1, snapshot.events.allocations());
+//! assert_eq!(1, snapshot.events.deallocations());
+//! assert!(snapshot.events.max_memory_used().unwrap() >= 16);
+//! ```
 
 use std::{
     alloc::{GlobalAlloc, Layout, System},
@@ -49,7 +67,10 @@ use std::{
     fmt, thread,
 };
 
+mod events;
 mod machine;
+
+pub use self::events::Events;
 pub use self::machine::{Machine, Region, Violation};
 pub use checkers_macros::test;
 
@@ -58,8 +79,35 @@ thread_local! {
     ///
     /// Feel free to interact with this directly, but it's primarily used
     /// through the [`test`](crate::test) macro.
-    pub static STATE: RefCell<State> = RefCell::new(State::new());
-    pub static MUTED: Cell<bool> = Cell::new(true);
+    static STATE: RefCell<State> = RefCell::new(State::new());
+    static MUTED: Cell<bool> = Cell::new(true);
+}
+
+/// Perform an operation, while having access to the thread-local state.
+pub fn with_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&RefCell<State>) -> R,
+{
+    crate::STATE.with(f)
+}
+
+/// Test if the crate is currently muted.
+pub fn is_muted() -> bool {
+    MUTED.with(Cell::get)
+}
+
+/// Enable muting for the duration of the guard.
+pub fn mute_guard(muted: bool) -> MuteGuard {
+    MuteGuard(MUTED.with(|s| s.replace(muted)))
+}
+
+/// A helper guard to make sure the state is de-allocated on drop.
+pub struct MuteGuard(bool);
+
+impl Drop for MuteGuard {
+    fn drop(&mut self) {
+        MUTED.with(|s| s.set(self.0));
+    }
 }
 
 /// Verify the state of the allocator.
@@ -89,85 +137,57 @@ macro_rules! verify {
     };
 }
 
-/// Simplified helper macro to run the checkers environment over a closure.
+pub struct Snapshot {
+    pub events: Events,
+}
+
+/// Run the specified closure and return a snapshot of the memory state
+/// afterwards.
+///
+/// This can be useful to programmatically test for allocation invariants,
+/// while the default behavior is to simply panic on invariant errors.
 ///
 /// # Examples
 ///
 /// ```rust
-/// checkers::with!(|| {
-///     let _ = Box::into_raw(Box::new(0u128));
+/// #[global_allocator]
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+///
+/// let snapshot = checkers::with(|| {
+///     let _ = vec![1, 2, 3, 4];
 /// });
+///
+/// assert_eq!(2, snapshot.events.len());
+/// assert!(snapshot.events[0].is_allocation_with(|a| a.size >= 16));
+/// assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
+/// assert_eq!(1, snapshot.events.allocations());
+/// assert_eq!(1, snapshot.events.deallocations());
+/// assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 /// ```
-#[macro_export]
-macro_rules! with {
-    ($f:expr) => {
-        checkers::STATE.with(|state| state.borrow_mut().clear());
+pub fn with<F>(f: F) -> Snapshot
+where
+    F: FnOnce(),
+{
+    crate::with_state(|s| {
+        s.borrow_mut().events.clear();
 
-        (|| {
-            let _g = checkers::mute(false);
-            ($f)();
-        })();
-
-        checkers::STATE.with(|state| {
-            $crate::verify!(&mut *state.borrow_mut());
-        });
-    };
-}
-
-/// A fixed-size collection of allocations.
-pub struct Events {
-    data: Vec<Event>,
-}
-
-impl Events {
-    /// Construct a new collection of allocations.
-    pub const fn new() -> Self {
-        Self { data: Vec::new() }
-    }
-
-    /// Reserve extra capacity for the underlying storage.
-    pub fn reserve(&mut self, cap: usize) {
-        self.data.reserve(cap.saturating_sub(self.data.capacity()));
-    }
-
-    /// Access the capacity of the Events container.
-    pub fn capacity(&self) -> usize {
-        self.data.capacity()
-    }
-
-    /// Fetch all allocations as a slice.
-    pub fn as_slice(&self) -> &[Event] {
-        &self.data[..]
-    }
-
-    /// Fetch all allocations as a slice.
-    pub fn as_slice_mut(&mut self) -> &mut [Event] {
-        &mut self.data[..]
-    }
-
-    /// Clear the collection of events.
-    pub fn clear(&mut self) {
-        self.data.clear();
-    }
-
-    /// Push a single allocation.
-    pub fn push(&mut self, event: Event) {
-        // Note: pushing might allocate, so mute while we are doing that, if we
-        // have to.
-
-        if self.data.capacity() <= self.data.len() {
-            let _g = crate::mute(true);
-            self.data.push(event);
-        } else {
-            self.data.push(event);
+        {
+            let _g = crate::mute_guard(false);
+            f();
         }
-    }
+
+        let snapshot = Snapshot {
+            events: s.borrow().events.clone(),
+        };
+
+        snapshot
+    })
 }
 
 /// Structure containing all thread-local state required to use the
 /// single-threaded allocation checker.
 pub struct State {
-    events: Events,
+    pub events: Events,
 }
 
 impl State {
@@ -183,25 +203,14 @@ impl State {
         self.events.reserve(cap);
     }
 
-    /// Validate the current state and populate the errors collection with any violations
-    /// found.
-    pub fn validate(&self, errors: &mut Vec<Violation>) {
-        let mut machine = Machine::default();
-
-        for event in self.events.as_slice() {
-            if let Err(e) = machine.push(*event) {
-                errors.push(e);
-            }
-        }
-
-        for region in machine.trailing_regions() {
-            errors.push(Violation::DanglingRegion { region });
-        }
-    }
-
     /// Clear the current collection of events.
     pub fn clear(&mut self) {
         self.events.clear();
+    }
+
+    /// Validate the current state.
+    pub fn validate(&self, errors: &mut Vec<Violation>) {
+        self.events.validate(errors);
     }
 }
 
@@ -252,23 +261,61 @@ pub enum Event {
     /// Placeholder for empty events.
     Empty,
     /// An allocation.
-    Allocation {
-        /// The pointer of the allocation.
-        ptr: Pointer,
-        /// The size of the allocation.
-        size: usize,
-        /// The alignment of the allocation.
-        align: usize,
-    },
+    Allocation(Region),
     /// A deallocation.
-    Deallocation {
-        /// The pointer of the allocation.
-        ptr: Pointer,
-        /// The size of the allocation.
-        size: usize,
-        /// The alignment of the allocation.
-        align: usize,
-    },
+    Deallocation(Region),
+}
+
+impl Event {
+    /// Test if this event is an allocation which matches the specified
+    /// predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let event = checkers::Event::Allocation(checkers::Region {
+    ///     ptr: 100.into(),
+    ///     size: 100,
+    ///     align: 4,
+    /// });
+    ///
+    /// assert!(event.is_allocation_with(|r| r.size == 100 && r.align == 4));
+    /// assert!(!event.is_deallocation_with(|r| r.size == 100 && r.align == 4));
+    /// ```
+    pub fn is_allocation_with<F>(self, f: F) -> bool
+    where
+        F: FnOnce(Region) -> bool,
+    {
+        match self {
+            Self::Allocation(region) => f(region),
+            _ => false,
+        }
+    }
+
+    /// Test if this event is a deallocation which matches the specified
+    /// predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let event = checkers::Event::Deallocation(checkers::Region {
+    ///     ptr: 100.into(),
+    ///     size: 100,
+    ///     align: 4,
+    /// });
+    ///
+    /// assert!(!event.is_allocation_with(|r| r.size == 100 && r.align == 4));
+    /// assert!(event.is_deallocation_with(|r| r.size == 100 && r.align == 4));
+    /// ```
+    pub fn is_deallocation_with<F>(self, f: F) -> bool
+    where
+        F: FnOnce(Region) -> bool,
+    {
+        match self {
+            Self::Deallocation(region) => f(region),
+            _ => false,
+        }
+    }
 }
 
 /// Allocator that needs to be installed.
@@ -291,12 +338,12 @@ unsafe impl GlobalAlloc for Allocator {
         let ptr = System.alloc(layout);
 
         if !thread::panicking() && !crate::is_muted() {
-            STATE.with(move |state| {
-                state.borrow_mut().events.push(Event::Allocation {
+            crate::with_state(move |s| {
+                s.borrow_mut().events.push(Event::Allocation(Region {
                     ptr: ptr.into(),
                     size: layout.size(),
                     align: layout.align(),
-                });
+                }));
             });
         }
 
@@ -305,34 +352,15 @@ unsafe impl GlobalAlloc for Allocator {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         if !thread::panicking() && !crate::is_muted() {
-            STATE.with(move |state| {
-                state.borrow_mut().events.push(Event::Deallocation {
+            crate::with_state(move |s| {
+                s.borrow_mut().events.push(Event::Deallocation(Region {
                     ptr: ptr.into(),
                     size: layout.size(),
                     align: layout.align(),
-                });
+                }));
             });
         }
 
         System.dealloc(ptr, layout);
-    }
-}
-
-/// Test if the crate is currently muted.
-pub fn is_muted() -> bool {
-    MUTED.with(|s| s.get())
-}
-
-/// Enable muting for the duration of the guard.
-pub fn mute(muted: bool) -> StateGuard {
-    StateGuard(MUTED.with(|s| s.replace(muted)))
-}
-
-/// A helper guard to make sure the state is de-allocated on drop.
-pub struct StateGuard(bool);
-
-impl Drop for StateGuard {
-    fn drop(&mut self) {
-        MUTED.with(|s| s.set(self.0));
     }
 }
