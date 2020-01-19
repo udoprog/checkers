@@ -47,7 +47,7 @@ use std::num::NonZeroUsize;
 /// #[global_allocator]
 /// static CHECKED: checkers::Allocator = checkers::Allocator;
 ///
-/// fn verify_test_custom_verify(state: &checkers::State) {
+/// fn verify_test_custom_verify(state: &mut checkers::State) {
 ///    let mut violations = Vec::new();
 ///    state.validate(&mut violations);
 ///    assert_eq!(1, violations.len());

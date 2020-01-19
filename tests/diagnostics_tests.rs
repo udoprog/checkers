@@ -1,5 +1,5 @@
 #[global_allocator]
-static CHECKED: checkers::Allocator = checkers::Allocator;
+static ALLOCATOR: checkers::Allocator = checkers::Allocator;
 
 #[test]
 fn test_event_inspection() {

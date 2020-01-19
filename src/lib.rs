@@ -1,37 +1,50 @@
-//! Checkers is a simple allocation checker for Rust. It plugs in through the
-//! [global allocator] API and can sanity check your unsafe Rust during
-//! integration testing.
+//! Checkers is a simple allocation sanitizer for Rust. It plugs in through the
+//! [global allocator] and can sanity check your unsafe Rust during integration
+//! testing. Since it plugs in through the global allocator it doesn't require any
+//! additional dependencies and works for all platforms - but it is more limited in
+//! what it can verify.
 //!
 //! [global allocator]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html
 //!
 //! It can check for the following things:
 //! * Double-frees.
-//! * Attempts to free regions which are not allocated.
-//! * Underlying allocator producting regions not adhering to the requested layout.
+//! * Freeing regions which are not allocated.
+//! * Freeing only part of regions which are allocated.
+//! * Freeing a region with a [mismatching layout].
+//! * The underlying allocator produces regions adhering to the requested layout.
 //!   Namely size and alignment.
-//! * Other arbitrary user-defined conditions ([see test]).
+//! * Detailed information on memory usage.
+//! * Other user-defined conditions ([see test]).
 //!
 //! What it can't do:
 //! * Test multithreaded code. Since the allocator is global, it is difficult to
-//!  scope the state for each test case.
+//!   scope the state for each test case.
+//! * Detect out-of-bounds accesses.
 //!
+//! [mismatching layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
 //! [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 //!
 //! # Examples
 //!
-//! You use checkers by installing [`checkers::Allocator`] as your allocator,
-//! then making use of either the [`#[checkers::test]`](attr.test.html) or the
-//! [`checkers::with`] function.
+//! It is recommended that you use checkers for [integration tests], which by
+//! default lives in the `./tests` directory. Each file in this directory will be
+//! compiled as a separate program, so the use of the global allocator can be more
+//! isolated.
 //!
-//! [`checkers::Allocator`]: crate::Allocator
+//! [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
+//!
+//! We then use checkers by installing `checkers::Allocator` as the global
+//! allocator, after this we can make use of [`#[checkers::test]`](attr.test.html) attribute macro or
+//! the [`checkers::with`] function in our tests.
+//!
 //! [`checkers::with`]: crate::with
 //!
-//! ```rust,no_run
+//! ```rust
 //! #[global_allocator]
 //! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
-//!
+//! 
 //! #[checkers::test]
-//! fn test_leak_box() {
+//! fn test_allocations() {
 //!     let _ = Box::into_raw(Box::new(42));
 //! }
 //! ```
@@ -49,16 +62,19 @@
 //! #[global_allocator]
 //! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
 //!
-//! let snapshot = checkers::with(|| {
-//!     let _ = vec![1, 2, 3, 4];
-//! });
-//!
-//! assert_eq!(2, snapshot.events.len());
-//! assert!(snapshot.events[0].is_allocation_with(|r| r.size >= 16));
-//! assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
-//! assert_eq!(1, snapshot.events.allocations());
-//! assert_eq!(1, snapshot.events.deallocations());
-//! assert!(snapshot.events.max_memory_used().unwrap() >= 16);
+//! #[test]
+//! fn test_event_inspection() {
+//!     let snapshot = checkers::with(|| {
+//!         let _ = vec![1, 2, 3, 4];
+//!     });
+//! 
+//!     assert_eq!(2, snapshot.events.len());
+//!     assert!(snapshot.events[0].is_allocation_with(|r| r.size >= 16));
+//!     assert!(snapshot.events[1].is_deallocation_with(|a| a.size >= 16));
+//!     assert_eq!(1, snapshot.events.allocations());
+//!     assert_eq!(1, snapshot.events.deallocations());
+//!     assert!(snapshot.events.max_memory_used().unwrap() >= 16);
+//! }
 //! ```
 
 use std::{
@@ -111,16 +127,32 @@ impl Drop for MuteGuard {
 }
 
 /// Verify the state of the allocator.
+/// 
+/// Note: this macro is used by default if the `verify` parameter is not
+/// specified in [`#[checkers::test]`](attr.test.html).
 ///
-/// This currently performs the following tests:
+/// Currently performs the following tests:
 /// * Checks that each allocation has an exact corresponding deallocation,
 ///   and that it happened _after_ the allocation it relates to.
 /// * That there are no overlapping deallocations / allocations.
 /// * That the thread-local timeline matches.
 ///
-/// Will be enabled in the future:
-/// * Check that the _global_ timeline matches (e.g. memory is sent to a
-///   different thread, where it is de-allocated).
+/// # Examples
+///
+/// ```rust
+/// #[global_allocator]
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+///
+/// fn verify_test_custom_verify(state: &mut checkers::State) {
+///    assert_eq!(1, state.events.allocations());
+///    checkers::verify!(state);
+/// }
+///
+/// #[checkers::test(verify = "verify_test_custom_verify")]
+/// fn test_custom_verify() {
+///     let _ = Box::into_raw(vec![1, 2, 3, 4, 5].into_boxed_slice());
+/// }
+/// ```
 #[macro_export]
 macro_rules! verify {
     ($state:expr) => {
