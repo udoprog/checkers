@@ -40,8 +40,8 @@ isolated.
 [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
 
 We then use checkers by installing `checkers::Allocator` as the global
-allocator, after this we can make use of `#[checkers::test]` attribute macro or
-the `checkers::with` function in our tests.
+allocator, after this we can make use of [`#[checkers::test]`](https://docs.rs/checkers/latest/checkers/attr.test.html) attribute macro or
+the [`checkers::with`](https://docs.rs/checkers/latest/checkers/fn.with.html) function in our tests.
 
 ```rust
 #[global_allocator]
