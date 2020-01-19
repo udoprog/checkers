@@ -34,15 +34,16 @@
 //!
 //! [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
 //!
-//! We then use checkers by installing `checkers::Allocator` as the global
+//! We then use checkers by installing [`checkers::Allocator`] as the global
 //! allocator, after this we can make use of [`#[checkers::test]`](attr.test.html) attribute macro or
 //! the [`checkers::with`] function in our tests.
 //!
+//! [`checkers::Allocator`]: crate::Allocator
 //! [`checkers::with`]: crate::with
 //!
 //! ```rust
 //! #[global_allocator]
-//! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+//! static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 //!
 //! #[checkers::test]
 //! fn test_allocations() {
@@ -61,7 +62,7 @@
 //!
 //! ```rust
 //! #[global_allocator]
-//! static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+//! static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 //!
 //! #[test]
 //! fn test_event_inspection() {
@@ -79,14 +80,15 @@
 //! ```
 
 use std::{
-    alloc::{GlobalAlloc, Layout, System},
     cell::{Cell, RefCell},
     fmt,
 };
 
+mod allocator;
 mod events;
 mod machine;
 
+pub use self::allocator::Allocator;
 pub use self::events::Events;
 pub use self::machine::{Machine, Region, Violation};
 pub use checkers_macros::test;
@@ -142,7 +144,7 @@ impl Drop for MuteGuard {
 ///
 /// ```rust
 /// #[global_allocator]
-/// static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 ///
 /// fn verify_test_custom_verify(state: &mut checkers::State) {
 ///    assert_eq!(1, state.events.allocations());
@@ -184,7 +186,7 @@ pub struct Snapshot {
 ///
 /// ```rust
 /// #[global_allocator]
-/// static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 ///
 /// let snapshot = checkers::with(|| {
 ///     let _ = vec![1, 2, 3, 4];
@@ -352,52 +354,5 @@ impl Event {
             Self::Free(region) => f(region),
             _ => false,
         }
-    }
-}
-
-/// Allocator that needs to be installed.
-///
-/// Delegates allocations to [`std::alloc::System`] (this might be configurable
-/// in the future).
-///
-/// [`std::alloc::System`]: std::alloc::System
-///
-/// You install it by doing:
-///
-/// ```rust,no_run
-/// #[global_allocator]
-/// static ALLOCATOR: checkers::Allocator = checkers::Allocator;
-/// ```
-pub struct Allocator;
-
-unsafe impl GlobalAlloc for Allocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = System.alloc(layout);
-
-        if !crate::is_muted() {
-            crate::with_state(move |s| {
-                s.borrow_mut().events.push(Event::Alloc(Region {
-                    ptr: ptr.into(),
-                    size: layout.size(),
-                    align: layout.align(),
-                }));
-            });
-        }
-
-        ptr
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if !crate::is_muted() {
-            crate::with_state(move |s| {
-                s.borrow_mut().events.push(Event::Free(Region {
-                    ptr: ptr.into(),
-                    size: layout.size(),
-                    align: layout.align(),
-                }));
-            });
-        }
-
-        System.dealloc(ptr, layout);
     }
 }

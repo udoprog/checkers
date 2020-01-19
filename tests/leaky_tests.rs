@@ -1,5 +1,5 @@
 #[global_allocator]
-static CHECKED: checkers::Allocator = checkers::Allocator;
+static CHECKED: checkers::Allocator = checkers::Allocator::system();
 
 #[checkers::test]
 #[should_panic]

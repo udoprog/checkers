@@ -46,7 +46,7 @@ the [`checkers::with`](https://docs.rs/checkers/latest/checkers/fn.with.html) fu
 
 ```rust
 #[global_allocator]
-static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
 #[checkers::test]
 fn test_allocations() {
@@ -65,7 +65,7 @@ With `checkers::with`, we can perform more detailed diagnostics:
 
 ```rust
 #[global_allocator]
-static ALLOCATOR: checkers::Allocator = checkers::Allocator;
+static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 
 #[test]
 fn test_event_inspection() {
