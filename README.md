@@ -14,11 +14,12 @@ what it can verify.
 
 It can check for the following things:
 * Double-frees.
+* Memory leaks.
 * Freeing regions which are not allocated.
 * Freeing only part of regions which are allocated.
-* Freeing a region with a [mismatching layout].
-* The underlying allocator produces regions adhering to the requested layout.
-  Namely size and alignment.
+* Freeing a region with a [mismatched layout].
+* That the underlying allocator produces regions adhering to the requested
+  layout. Namely size and alignment.
 * Detailed information on memory usage.
 * Other user-defined conditions ([see test]).
 
@@ -27,7 +28,7 @@ What it can't do:
   scope the state for each test case.
 * Detect out-of-bounds accesses.
 
-[mismatching layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
+[mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
 [see test]: tests/leaky_tests.rs
 
 # Examples
