@@ -7,7 +7,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "checkers"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "checkers-macros 0.5.0",
  "fxhash 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -116,7 +116,7 @@ where
         #[cfg(feature = "realloc")]
         let min_size = usize::min(layout.size(), new_size);
         #[cfg(feature = "realloc")]
-        let old_hash = crate::utils::hash_ptr(ptr, layout.size());
+        let old_hash = crate::utils::hash_ptr(ptr, min_size);
 
         let old_ptr = ptr.into();
         let new_ptr = self.delegate.realloc(ptr, layout, new_size);
