@@ -16,3 +16,8 @@ categories = ["memory-management", "development-tools"]
 
 [dependencies]
 checkers-macros = {path = "./macros", version = "0.3.0"}
+fxhash = {version = "0.2.1", optional = true}
+
+[features]
+default = ["realloc"]
+realloc = ["fxhash"]

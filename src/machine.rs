@@ -5,11 +5,13 @@ use std::{
     fmt,
 };
 
-use crate::{Event, Pointer};
+use crate::{AllocZeroed, Event, Pointer, Realloc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Violation {
     ConflictingAlloc { requested: Region, existing: Region },
+    NonZeroedAlloc { requested: Region },
+    NonCopiedRealloc { free: Region, alloc: Region },
     MisalignedAlloc { requested: Region },
     IncompleteFree { requested: Region, existing: Region },
     MisalignedFree { requested: Region, existing: Region },
@@ -56,6 +58,16 @@ impl fmt::Display for Violation {
                 "Requested allocation ({}) overlaps with existing ({})",
                 requested, existing
             ),
+            Self::NonZeroedAlloc { requested } => write!(
+                fmt,
+                "Requested allocation ({}) was not zerod by the allocator",
+                requested
+            ),
+            Self::NonCopiedRealloc { free, alloc } => write!(
+                fmt,
+                "Relocating from ({}) to ({}) did not correctly copy the prefixing bytes",
+                free, alloc,
+            ),
             Self::MisalignedAlloc { requested } => {
                 write!(fmt, "Allocated region ({}) is misaligned.", requested)
             }
@@ -82,6 +94,7 @@ impl fmt::Display for Violation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub struct Region {
     /// The pointer of the allocation.
     pub ptr: Pointer,
@@ -185,67 +198,103 @@ impl Machine {
     pub fn push(&mut self, event: Event) -> Result<(), Violation> {
         match event {
             Event::Alloc(requested) => {
-                if !requested.ptr.is_aligned_with(requested.align) {
-                    return Err(Violation::MisalignedAlloc { requested });
-                }
-
-                if let Some(existing) = find_region_overlaps(&self.regions, requested).next() {
-                    return Err(Violation::ConflictingAlloc {
-                        requested,
-                        existing,
-                    });
-                }
-
-                self.memory_used = self.memory_used.saturating_add(requested.size);
-                debug_assert!(self.regions.insert(requested.ptr, requested).is_none());
+                self.alloc(requested)?;
             }
             Event::Free(requested) => {
-                if let map::Entry::Occupied(entry) = self.regions.entry(requested.ptr) {
-                    let existing = *entry.get();
-
-                    if !existing.is_same_region_as(requested) {
-                        return Err(Violation::IncompleteFree {
-                            requested,
-                            existing,
-                        });
-                    }
-
-                    if existing.align != requested.align {
-                        return Err(Violation::MisalignedFree {
-                            requested,
-                            existing,
-                        });
-                    }
-
-                    let (_, region) = entry.remove_entry();
-                    self.memory_used = self.memory_used.saturating_sub(region.size);
-                    return Ok(());
+                self.free(requested)?;
+            }
+            Event::AllocZeroed(AllocZeroed {
+                is_zeroed,
+                alloc: requested,
+            }) => {
+                if let Some(false) = is_zeroed {
+                    return Err(Violation::NonZeroedAlloc { requested });
                 }
 
-                return Err(Violation::MissingFree { requested });
+                self.alloc(requested)?;
+            }
+            Event::Realloc(Realloc {
+                is_relocated,
+                free,
+                alloc,
+            }) => {
+                if let Some(false) = is_relocated {
+                    return Err(Violation::NonCopiedRealloc { free, alloc });
+                }
+
+                self.free(free)?;
+                self.alloc(alloc)?;
             }
         }
 
-        return Ok(());
+        Ok(())
+    }
 
-        fn find_region_overlaps<'a>(
-            regions: &'a BTreeMap<Pointer, Region>,
-            needle: Region,
-        ) -> impl Iterator<Item = Region> + 'a {
-            let head = regions
-                .range(..=needle.ptr)
-                .take_while(move |(_, &r)| r.overlaps(needle));
-
-            let tail = regions
-                .range(needle.ptr..)
-                .take_while(move |(_, &r)| r.overlaps(needle));
-
-            head.chain(tail).map(|(_, &r)| r)
+    /// Process an allocation.
+    fn alloc(&mut self, requested: Region) -> Result<(), Violation> {
+        if !requested.ptr.is_aligned_with(requested.align) {
+            return Err(Violation::MisalignedAlloc { requested });
         }
+
+        if let Some(existing) = find_region_overlaps(&self.regions, requested).next() {
+            return Err(Violation::ConflictingAlloc {
+                requested,
+                existing,
+            });
+        }
+
+        self.memory_used = self.memory_used.saturating_add(requested.size);
+        debug_assert!(self.regions.insert(requested.ptr, requested).is_none());
+        Ok(())
+    }
+
+    /// Process a free.
+    fn free(&mut self, requested: Region) -> Result<(), Violation> {
+        let entry = if let map::Entry::Occupied(entry) = self.regions.entry(requested.ptr) {
+            entry
+        } else {
+            return Err(Violation::MissingFree { requested });
+        };
+
+        let existing = *entry.get();
+
+        if !existing.is_same_region_as(requested) {
+            return Err(Violation::IncompleteFree {
+                requested,
+                existing,
+            });
+        }
+
+        if existing.align != requested.align {
+            return Err(Violation::MisalignedFree {
+                requested,
+                existing,
+            });
+        }
+
+        let (_, region) = entry.remove_entry();
+        self.memory_used = self.memory_used.saturating_sub(region.size);
+        Ok(())
     }
 
     /// Access all trailing regions (ones which have not been deallocated).
     pub fn trailing_regions(&self) -> Vec<Region> {
         self.regions.values().copied().collect()
     }
+}
+
+/// Utility function to find overlapping regions.
+fn find_region_overlaps<'a>(
+    regions: &'a BTreeMap<Pointer, Region>,
+    needle: Region,
+) -> impl Iterator<Item = Region> + 'a {
+    let head = regions
+        .range(..=needle.ptr)
+        .take_while(move |(_, &r)| r.overlaps(needle));
+
+    let tail = regions
+        .range(needle.ptr..)
+        .take_while(move |(_, &r)| r.overlaps(needle));
+
+    head.chain(tail).map(|(_, &r)| r)
 }

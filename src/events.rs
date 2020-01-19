@@ -83,14 +83,42 @@ impl Events {
     /// use checkers::{Events, Event, Region};
     /// let mut events = Events::new();
     /// events.push(Event::Alloc(Region::new(10.into(), 10, 1)));
-    /// assert_eq!(1, events.allocations());
+    /// assert_eq!(1, events.allocs());
     /// assert_eq!(0, events.frees());
     /// ```
-    pub fn allocations(&self) -> usize {
+    pub fn allocs(&self) -> usize {
         self.data
             .iter()
             .map(|e| match e {
-                Event::Alloc { .. } => 1,
+                Event::Alloc { .. } | Event::AllocZeroed { .. } => 1,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// Count the number of allocations in this collection of events.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Events, Event, Region, Realloc};
+    /// let mut events = Events::new();
+    ///
+    /// events.push(Event::Realloc(Realloc::new(
+    ///     Some(true),
+    ///     Region::new(10.into(), 10, 1),
+    ///     Region::new(20.into(), 10, 1)
+    /// )));
+    ///
+    /// assert_eq!(1, events.reallocs());
+    /// assert_eq!(0, events.allocs());
+    /// assert_eq!(0, events.frees());
+    /// ```
+    pub fn reallocs(&self) -> usize {
+        self.data
+            .iter()
+            .map(|e| match e {
+                Event::Realloc { .. } => 1,
                 _ => 0,
             })
             .sum()
@@ -104,7 +132,7 @@ impl Events {
     /// use checkers::{Events, Event, Region};
     /// let mut events = Events::new();
     /// events.push(Event::Free(Region::new(10.into(), 10, 1)));
-    /// assert_eq!(0, events.allocations());
+    /// assert_eq!(0, events.allocs());
     /// assert_eq!(1, events.frees());
     /// ```
     pub fn frees(&self) -> usize {

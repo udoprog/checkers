@@ -25,6 +25,16 @@
 //! [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
 //! [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 //!
+//! # Features
+//!
+//! The following are features available, that changes how checkers work.
+//!
+//! * `realloc` - Enabling this feature causes checker to verify
+//!   that a `realloc` operation is correct. That bytes from the old region were
+//!   faithfully transferred to the new, resized one.
+//!   Since this can have a rather significant performance impact, it can be
+//!   disabled.
+//!
 //! # Examples
 //!
 //! It is recommended that you use checkers for [integration tests], which by
@@ -73,7 +83,7 @@
 //!     assert_eq!(2, snapshot.events.len());
 //!     assert!(snapshot.events[0].is_alloc_with(|r| r.size >= 16));
 //!     assert!(snapshot.events[1].is_free_with(|a| a.size >= 16));
-//!     assert_eq!(1, snapshot.events.allocations());
+//!     assert_eq!(1, snapshot.events.allocs());
 //!     assert_eq!(1, snapshot.events.frees());
 //!     assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 //! }
@@ -87,6 +97,7 @@ use std::{
 mod allocator;
 mod events;
 mod machine;
+mod utils;
 
 pub use self::allocator::Allocator;
 pub use self::events::Events;
@@ -147,7 +158,7 @@ impl Drop for MuteGuard {
 /// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 ///
 /// fn verify_test_custom_verify(state: &mut checkers::State) {
-///    assert_eq!(1, state.events.allocations());
+///    assert_eq!(1, state.events.allocs());
 ///    checkers::verify!(state);
 /// }
 ///
@@ -172,6 +183,7 @@ macro_rules! verify {
     };
 }
 
+#[derive(Debug)]
 pub struct Snapshot {
     pub events: Events,
 }
@@ -195,7 +207,7 @@ pub struct Snapshot {
 /// assert_eq!(2, snapshot.events.len());
 /// assert!(snapshot.events[0].is_alloc_with(|a| a.size >= 16));
 /// assert!(snapshot.events[1].is_free_with(|a| a.size >= 16));
-/// assert_eq!(1, snapshot.events.allocations());
+/// assert_eq!(1, snapshot.events.allocs());
 /// assert_eq!(1, snapshot.events.frees());
 /// assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 /// ```
@@ -296,6 +308,43 @@ impl From<usize> for Pointer {
     }
 }
 
+/// Description of a zero-allocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub struct AllocZeroed {
+    pub is_zeroed: Option<bool>,
+    pub alloc: Region,
+}
+
+impl AllocZeroed {
+    /// Construct a new reallocation.
+    pub fn new(is_zeroed: Option<bool>, alloc: Region) -> Self {
+        Self { is_zeroed, alloc }
+    }
+}
+
+/// Description of a reallocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub struct Realloc {
+    /// Indicates if the subset of the old region was faithfully copied over
+    /// to the new region.
+    pub is_relocated: Option<bool>,
+    pub free: Region,
+    pub alloc: Region,
+}
+
+impl Realloc {
+    /// Construct a new reallocation.
+    pub fn new(is_relocated: Option<bool>, free: Region, alloc: Region) -> Self {
+        Self {
+            is_relocated,
+            free,
+            alloc,
+        }
+    }
+}
+
 /// Metadata for a single allocation or deallocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Event {
@@ -303,6 +352,10 @@ pub enum Event {
     Alloc(Region),
     /// A deallocation.
     Free(Region),
+    /// A zerod allocation, with an optional boolean indicates if it is actually
+    /// zeroed or not.
+    AllocZeroed(AllocZeroed),
+    Realloc(Realloc),
 }
 
 impl Event {
@@ -312,11 +365,7 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// let event = checkers::Event::Alloc(checkers::Region {
-    ///     ptr: 100.into(),
-    ///     size: 100,
-    ///     align: 4,
-    /// });
+    /// let event = checkers::Event::Alloc(checkers::Region::new(100.into(), 100, 4));
     ///
     /// assert!(event.is_alloc_with(|r| r.size == 100 && r.align == 4));
     /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
@@ -326,7 +375,7 @@ impl Event {
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Alloc(region) => f(region),
+            Self::Alloc(region) | Self::AllocZeroed(AllocZeroed { alloc: region, .. }) => f(region),
             _ => false,
         }
     }
@@ -337,11 +386,7 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// let event = checkers::Event::Free(checkers::Region {
-    ///     ptr: 100.into(),
-    ///     size: 100,
-    ///     align: 4,
-    /// });
+    /// let event = checkers::Event::Free(checkers::Region::new(100.into(), 100, 4));
     ///
     /// assert!(!event.is_alloc_with(|r| r.size == 100 && r.align == 4));
     /// assert!(event.is_free_with(|r| r.size == 100 && r.align == 4));
@@ -352,6 +397,54 @@ impl Event {
     {
         match self {
             Self::Free(region) => f(region),
+            _ => false,
+        }
+    }
+
+    /// Test if this event is an allocation which matches the specified
+    /// predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Event, Region, AllocZeroed};
+    /// let event = Event::AllocZeroed(AllocZeroed::new(Some(true), Region::new(100.into(), 100, 4)));
+    ///
+    /// assert!(event.is_alloc_zeroed_with(|r| r.alloc.size == 100 && r.alloc.align == 4));
+    /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
+    /// ```
+    pub fn is_alloc_zeroed_with<F>(self, f: F) -> bool
+    where
+        F: FnOnce(AllocZeroed) -> bool,
+    {
+        match self {
+            Self::AllocZeroed(alloc_zeroed) => f(alloc_zeroed),
+            _ => false,
+        }
+    }
+
+    /// Test if this event is an allocation which matches the specified
+    /// predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use checkers::{Event, Region, Realloc};
+    ///
+    /// let event = Event::Realloc(Realloc::new(
+    ///     Some(true),
+    ///     Region::new(10.into(), 10, 1),
+    ///     Region::new(20.into(), 20, 1)
+    /// ));
+    ///
+    /// assert!(event.is_realloc_with(|r| r.free.size == 10 && r.alloc.size == 20));
+    /// ```
+    pub fn is_realloc_with<F>(self, f: F) -> bool
+    where
+        F: FnOnce(Realloc) -> bool,
+    {
+        match self {
+            Self::Realloc(realloc) => f(realloc),
             _ => false,
         }
     }
