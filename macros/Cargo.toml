@@ -1,6 +1,6 @@
 [package]
 name = "checkers-macros"
-version = "0.3.1"
+version = "0.5.0"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
@@ -22,4 +22,4 @@ quote = "1"
 syn = { version = "1.0.13", features = ["full"] }
 
 [dev-dependencies]
-checkers = {path = "..", version = "0.4.0"}
+checkers = {path = "..", version = "0.5.0"}
