@@ -57,6 +57,13 @@ where
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = self.delegate.alloc(layout);
 
+        // Note: return early, caller is likely to panic or handle OOM scenario.
+        // gracefully.
+        // TODO: Consider emitting diagnostics.
+        if ptr.is_null() {
+            return ptr;
+        }
+
         if !crate::is_muted() {
             crate::with_state(move |s| {
                 s.borrow_mut().events.push(Event::Alloc(Region {
@@ -87,6 +94,13 @@ where
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = self.delegate.alloc_zeroed(layout);
 
+        // Note: return early, caller is likely to panic or handle OOM scenario.
+        // gracefully.
+        // TODO: Consider emitting diagnostics.
+        if ptr.is_null() {
+            return ptr;
+        }
+
         if !crate::is_muted() {
             crate::with_state(move |s| {
                 let is_zeroed = Some(crate::utils::is_zeroed(slice::from_raw_parts(
@@ -113,13 +127,27 @@ where
             return self.delegate.realloc(ptr, layout, new_size);
         }
 
+        // Safety Note: This needs to happen before call to `realloc`, since it
+        // might deallocate it.
         #[cfg(feature = "realloc")]
         let min_size = usize::min(layout.size(), new_size);
         #[cfg(feature = "realloc")]
-        let old_hash = crate::utils::hash_ptr(ptr, min_size);
+        let old_hash = {
+            assert!(!ptr.is_null());
+            crate::utils::hash_ptr(ptr, min_size)
+        };
 
+        // Safety Note: Convert to pointer early to avoid relying on potentially
+        // dangling pointer later.
         let old_ptr = ptr.into();
         let new_ptr = self.delegate.realloc(ptr, layout, new_size);
+
+        // Note: return early, caller is likely to panic or handle OOM scenario.
+        // gracefully. Prior memory is unaltered.
+        // TODO: Consider emitting diagnostics.
+        if new_ptr.is_null() {
+            return new_ptr;
+        }
 
         crate::with_state(move |s| {
             #[cfg(feature = "realloc")]
