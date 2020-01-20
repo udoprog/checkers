@@ -18,7 +18,7 @@ use std::num::NonZeroUsize;
 ///
 /// ```rust
 /// #[global_allocator]
-/// static CHECKED: checkers::Allocator = checkers::Allocator;
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 ///
 /// #[checkers::test]
 /// fn test_leaky_box() {
@@ -30,7 +30,7 @@ use std::num::NonZeroUsize;
 ///
 /// ```rust
 /// #[global_allocator]
-/// static CHECKED: checkers::Allocator = checkers::Allocator;
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 ///
 /// #[checkers::test(capacity = 10_000)]
 /// fn test_custom_verify() {
@@ -45,13 +45,13 @@ use std::num::NonZeroUsize;
 ///
 /// ```rust
 /// #[global_allocator]
-/// static CHECKED: checkers::Allocator = checkers::Allocator;
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 ///
 /// fn verify_test_custom_verify(state: &mut checkers::State) {
 ///    let mut violations = Vec::new();
 ///    state.validate(&mut violations);
 ///    assert_eq!(1, violations.len());
-///    assert!(violations[0].is_dangling_region(|region| region.size == 20 && region.align == 4));
+///    assert!(violations[0].is_leaked_with(|region| region.size == 20 && region.align == 4));
 /// }
 ///
 /// #[checkers::test(verify = "verify_test_custom_verify")]
