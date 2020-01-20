@@ -1,7 +1,4 @@
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    ptr,
-};
+use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Note: allocator which intentionally doesn't allocate a zeroed region.
 struct TestAllocator;
@@ -16,21 +13,20 @@ unsafe impl GlobalAlloc for TestAllocator {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let size = layout.size();
-        let ptr = self.alloc(layout);
-        if !ptr.is_null() {
-            ptr::write_bytes(ptr, 0, size);
+        let ptr = System.alloc_zeroed(layout);
 
-            if layout.size() == 32 {
+        if !checkers::is_muted() {
+            if layout.size() >= 32 {
                 *ptr.add(31) = 1;
             }
         }
+
         ptr
     }
 }
 
 #[global_allocator]
-static CHECKED: checkers::Allocator<TestAllocator> = checkers::Allocator::new(TestAllocator);
+static ALLOCATOR: checkers::Allocator<TestAllocator> = checkers::Allocator::new(TestAllocator);
 
 #[cfg(feature = "realloc")]
 #[test]

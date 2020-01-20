@@ -1,7 +1,4 @@
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    cmp, ptr,
-};
+use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Note: allocator which intentionally doesn't copy all necessary bytes.
 struct TestAllocator;
@@ -16,26 +13,19 @@ unsafe impl GlobalAlloc for TestAllocator {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let new_layout = Layout::from_size_align_unchecked(new_size, layout.align());
-        let new_ptr = self.alloc(new_layout);
-        if !new_ptr.is_null() {
-            ptr::copy_nonoverlapping(ptr, new_ptr, cmp::min(layout.size(), new_size));
+        let new_ptr = System.realloc(ptr, layout, new_size);
 
-            // Intentionally corrupt the fourth byte of any relocation of the
-            // size 8. This should be when the collection is grown.
-            if new_size == 8 {
-                let v = *new_ptr.add(3);
-                *new_ptr.add(3) = !v;
-            }
-
-            self.dealloc(ptr, layout);
+        if !checkers::is_muted() && new_size == 8 {
+            let v = *new_ptr.add(3);
+            *new_ptr.add(3) = !v;
         }
+
         new_ptr
     }
 }
 
 #[global_allocator]
-static CHECKED: checkers::Allocator<TestAllocator> = checkers::Allocator::new(TestAllocator);
+static ALLOCATOR: checkers::Allocator<TestAllocator> = checkers::Allocator::new(TestAllocator);
 
 #[cfg(feature = "realloc")]
 #[test]

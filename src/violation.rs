@@ -27,6 +27,8 @@ pub enum Violation {
         /// The allocated region.
         alloc: Region,
     },
+    /// Allocator was asked to reallocate a null pointer.
+    ReallocNull {},
     /// A region produced by the allocator `requested` was not aligned
     /// appropriately.
     MisalignedAlloc {
@@ -111,6 +113,7 @@ impl fmt::Display for Violation {
                 "Relocating from ({}) to ({}) did not correctly copy the prefixing bytes",
                 free, alloc,
             ),
+            Self::ReallocNull {} => write!(fmt, "Tried to reallocate null pointer"),
             Self::MisalignedAlloc { requested } => {
                 write!(fmt, "Allocated region ({}) is misaligned.", requested)
             }

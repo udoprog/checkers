@@ -142,6 +142,16 @@ impl Machine {
                 self.free(free)?;
                 self.alloc(alloc)?;
             }
+            Event::ReallocNull => {
+                return Err(Violation::ReallocNull {});
+            }
+            // Note: the following have no effects, outside of what the erorrs
+            // mean to the caller of the allocator. They could for example
+            // decide to gracefully signal OOM (https://github.com/rust-lang/rust/issues/48043)
+            // or panic.
+            Event::AllocFailed => (),
+            Event::AllocZeroedFailed => (),
+            Event::ReallocFailed => (),
         }
 
         Ok(())

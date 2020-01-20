@@ -53,73 +53,90 @@ where
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = self.delegate.alloc(layout);
 
-        // Note: return early, caller is likely to panic or handle OOM scenario.
-        // gracefully.
+        // Note: On null return early, caller is likely to panic or handle OOM
+        // scenario gracefully.
         // TODO: Consider emitting diagnostics.
-        if ptr.is_null() {
+        if crate::is_muted() || ptr.is_null() {
+            if ptr.is_null() {
+                crate::with_state(move |s| {
+                    s.borrow_mut().events.push(Event::AllocFailed);
+                });
+            }
+
             return ptr;
         }
 
-        if !crate::is_muted() {
-            crate::with_state(move |s| {
-                s.borrow_mut().events.push(Event::Alloc(Region {
-                    ptr: ptr.into(),
-                    size: layout.size(),
-                    align: layout.align(),
-                }));
-            });
-        }
+        crate::with_state(move |s| {
+            s.borrow_mut().events.push(Event::Alloc(Region {
+                ptr: ptr.into(),
+                size: layout.size(),
+                align: layout.align(),
+            }));
+        });
 
         ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        if !crate::is_muted() {
-            crate::with_state(move |s| {
-                s.borrow_mut().events.push(Event::Free(Region {
-                    ptr: ptr.into(),
-                    size: layout.size(),
-                    align: layout.align(),
-                }));
-            });
+        self.delegate.dealloc(ptr, layout);
+
+        if crate::is_muted() {
+            return;
         }
 
-        self.delegate.dealloc(ptr, layout);
+        crate::with_state(move |s| {
+            s.borrow_mut().events.push(Event::Free(Region {
+                ptr: ptr.into(),
+                size: layout.size(),
+                align: layout.align(),
+            }));
+        });
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = self.delegate.alloc_zeroed(layout);
 
-        // Note: return early, caller is likely to panic or handle OOM scenario.
-        // gracefully.
-        // TODO: Consider emitting diagnostics.
-        if ptr.is_null() {
+        // Note: On null return early, caller is likely to panic or handle OOM
+        // scenario gracefully.
+        if crate::is_muted() || ptr.is_null() {
+            if ptr.is_null() {
+                crate::with_state(move |s| {
+                    s.borrow_mut().events.push(Event::AllocZeroedFailed);
+                });
+            }
+
             return ptr;
         }
 
-        if !crate::is_muted() {
-            crate::with_state(move |s| {
-                #[cfg(feature = "zeroed")]
-                let is_zeroed = Some(crate::utils::is_zeroed_ptr(ptr, layout.size()));
-                #[cfg(not(feature = "zeroed"))]
-                let is_zeroed = None;
+        crate::with_state(move |s| {
+            #[cfg(feature = "zeroed")]
+            let is_zeroed = Some(crate::utils::is_zeroed_ptr(ptr, layout.size()));
+            #[cfg(not(feature = "zeroed"))]
+            let is_zeroed = None;
 
-                s.borrow_mut().events.push(Event::AllocZeroed(AllocZeroed {
-                    is_zeroed,
-                    alloc: Region {
-                        ptr: ptr.into(),
-                        size: layout.size(),
-                        align: layout.align(),
-                    },
-                }));
-            });
-        }
+            s.borrow_mut().events.push(Event::AllocZeroed(AllocZeroed {
+                is_zeroed,
+                alloc: Region {
+                    ptr: ptr.into(),
+                    size: layout.size(),
+                    align: layout.align(),
+                },
+            }));
+        });
 
         ptr
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if crate::is_muted() {
+        // Note: On null return early, caller is likely to panic or handle OOM
+        // scenario gracefully.
+        if crate::is_muted() || ptr.is_null() {
+            if ptr.is_null() {
+                crate::with_state(|s| {
+                    s.borrow_mut().events.push(Event::ReallocNull);
+                });
+            }
+
             return self.delegate.realloc(ptr, layout, new_size);
         }
 
@@ -128,10 +145,7 @@ where
         #[cfg(feature = "realloc")]
         let min_size = usize::min(layout.size(), new_size);
         #[cfg(feature = "realloc")]
-        let old_hash = {
-            assert!(!ptr.is_null());
-            crate::utils::hash_ptr(ptr, min_size)
-        };
+        let old_hash = crate::utils::hash_ptr(ptr, min_size);
 
         // Safety Note: Convert to pointer early to avoid relying on potentially
         // dangling pointer later.
@@ -142,6 +156,10 @@ where
         // gracefully. Prior memory is unaltered.
         // TODO: Consider emitting diagnostics.
         if new_ptr.is_null() {
+            crate::with_state(|s| {
+                s.borrow_mut().events.push(Event::ReallocFailed);
+            });
+
             return new_ptr;
         }
 
