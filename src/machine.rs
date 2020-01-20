@@ -5,94 +5,10 @@ use std::{
     fmt,
 };
 
-use crate::{AllocZeroed, Event, Pointer, Realloc};
+use crate::{AllocZeroed, Event, Pointer, Realloc, Violation};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Violation {
-    ConflictingAlloc { requested: Region, existing: Region },
-    NonZeroedAlloc { requested: Region },
-    NonCopiedRealloc { free: Region, alloc: Region },
-    MisalignedAlloc { requested: Region },
-    IncompleteFree { requested: Region, existing: Region },
-    MisalignedFree { requested: Region, existing: Region },
-    MissingFree { requested: Region },
-    Leaked { region: Region },
-}
-
-impl Violation {
-    /// Test that this violation refers to a dangling region and that it matches
-    /// the given predicate.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use checkers::{Region, Violation};
-    /// let violation = Violation::Leaked {
-    ///     region: Region::new(42.into(), 20, 4),
-    /// };
-    /// assert!(violation.is_leaked_with(|r| r.size == 20 && r.align == 4));
-    ///
-    /// let requested = Region::new(10.into(), 10, 1);
-    /// let violation = Violation::MisalignedAlloc { requested };
-    /// assert!(!violation.is_leaked_with(|r| true));
-    /// ```
-    pub fn is_leaked_with<F>(&self, f: F) -> bool
-    where
-        F: FnOnce(Region) -> bool,
-    {
-        match *self {
-            Self::Leaked { region } => f(region),
-            _ => false,
-        }
-    }
-}
-
-impl fmt::Display for Violation {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ConflictingAlloc {
-                requested,
-                existing,
-            } => write!(
-                fmt,
-                "Requested allocation ({}) overlaps with existing ({})",
-                requested, existing
-            ),
-            Self::NonZeroedAlloc { requested } => write!(
-                fmt,
-                "Requested allocation ({}) was not zerod by the allocator",
-                requested
-            ),
-            Self::NonCopiedRealloc { free, alloc } => write!(
-                fmt,
-                "Relocating from ({}) to ({}) did not correctly copy the prefixing bytes",
-                free, alloc,
-            ),
-            Self::MisalignedAlloc { requested } => {
-                write!(fmt, "Allocated region ({}) is misaligned.", requested)
-            }
-            Self::IncompleteFree {
-                requested,
-                existing,
-            } => write!(
-                fmt,
-                "Freed ({}) only part of existing region ({})",
-                requested, existing
-            ),
-            Self::MisalignedFree {
-                requested,
-                existing,
-            } => write!(
-                fmt,
-                "Freed region ({}) has different alignment from existing ({})",
-                requested, existing
-            ),
-            Self::MissingFree { requested } => write!(fmt, "Freed missing region ({})", requested),
-            Self::Leaked { region } => write!(fmt, "Dangling region ({})", region),
-        }
-    }
-}
-
+/// A memory region. Including its location in memory `ptr`, it's `size` and
+/// alignment `align`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub struct Region {
@@ -105,6 +21,7 @@ pub struct Region {
 }
 
 impl Region {
+    /// Construct a new region.
     pub fn new(ptr: Pointer, size: usize, align: usize) -> Self {
         Self { ptr, size, align }
     }

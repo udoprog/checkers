@@ -1,23 +1,22 @@
-//! Allocator that needs to be installed.
-//!
-//! Delegates allocations to [`std::alloc::System`] (this might be configurable
-//! in the future).
-//!
-//! [`std::alloc::System`]: std::alloc::System
-//!
-//! You install it by doing:
-//!
-//! ```rust,no_run
-//! #[global_allocator]
-//! static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
-//! ```
-
 use crate::{AllocZeroed, Event, Realloc, Region};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     slice,
 };
 
+/// Allocator that needs to be installed.
+///
+/// Delegates allocations to [`std::alloc::System`] (this might be configurable
+/// in the future).
+///
+/// [`std::alloc::System`]: std::alloc::System
+///
+/// You install it by doing:
+///
+/// ```rust,no_run
+/// #[global_allocator]
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
+/// ```
 pub struct Allocator<T = System> {
     delegate: T,
 }

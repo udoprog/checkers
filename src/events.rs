@@ -6,7 +6,9 @@ use std::{ops, slice};
 
 use crate::{Event, Machine, Violation};
 
-/// A fixed-size collection of allocations.
+/// Collections of events.
+///
+/// We use a wrapper type to provide convenience methods for diagnostics.
 #[derive(Debug, Clone)]
 pub struct Events {
     data: Vec<Event>,

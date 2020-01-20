@@ -179,10 +179,7 @@ pub fn test(args: TokenStream, item: TokenStream) -> TokenStream {
                     s.reserve(#capacity);
                 }
 
-                (|| {
-                    let _g = checkers::mute_guard(false);
-                    #body
-                })();
+                checkers::with_unmuted(|| #body);
 
                 let state = &mut *s.borrow_mut();
                 #verify

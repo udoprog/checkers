@@ -91,6 +91,8 @@
 //! }
 //! ```
 
+#![deny(missing_docs)]
+
 use std::{
     cell::{Cell, RefCell},
     fmt,
@@ -100,10 +102,12 @@ mod allocator;
 mod events;
 mod machine;
 mod utils;
+mod violation;
 
 pub use self::allocator::Allocator;
 pub use self::events::Events;
-pub use self::machine::{Machine, Region, Violation};
+pub use self::machine::{Machine, Region};
+pub use self::violation::Violation;
 #[cfg(feature = "macros")]
 pub use checkers_macros::test;
 
@@ -124,14 +128,59 @@ where
     crate::STATE.with(f)
 }
 
-/// Test if the crate is currently muted.
+/// Test if the crate is currently muted. The allocator is muted by default.
+///
+/// We mute the allocator for allocations we don't want to be tracked. This is
+/// useful to avoid tracing internal allocations.
+///
+/// # Examples
+///
+/// ```rust
+/// assert!(checkers::is_muted());
+///
+/// {
+///     let _g = checkers::mute_guard(false);
+///     assert!(!checkers::is_muted());
+/// }
+///
+/// assert!(checkers::is_muted());
+///
+/// checkers::with_unmuted(|| {
+///     assert!(!checkers::is_muted());
+/// });
+///
+/// assert!(checkers::is_muted());
+///
+/// let result = std::panic::catch_unwind(|| {
+///     let _g = checkers::mute_guard(false);
+///     assert!(!checkers::is_muted());
+///     panic!("uh oh");
+/// });
+/// assert!(result.is_err());
+/// assert!(checkers::is_muted());
+/// ```
 pub fn is_muted() -> bool {
     MUTED.with(Cell::get)
 }
 
-/// Enable muting for the duration of the guard.
+/// Enable muting for the duration of the guard. A guard ensures that the muted
+/// state is restored to its original value even if we are unwinding due to a
+/// panic. You should prefer to use [with_unmuted] when possible.
+///
+/// See [is_muted] for details on what this means.
 pub fn mute_guard(muted: bool) -> MuteGuard {
     MuteGuard(MUTED.with(|s| s.replace(muted)))
+}
+
+/// Run the given closure while the allocator is muted.
+///
+/// See [is_muted] for details on what this means.
+pub fn with_unmuted<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let _g = crate::mute_guard(false);
+    f()
 }
 
 /// A helper guard to make sure the state is de-allocated on drop.
@@ -186,8 +235,10 @@ macro_rules! verify {
     };
 }
 
+/// A snapshot of the state of the checkers allocator.
 #[derive(Debug)]
 pub struct Snapshot {
+    /// Snapshot of all collected events.
     pub events: Events,
 }
 
@@ -221,10 +272,7 @@ where
     crate::with_state(|s| {
         s.borrow_mut().events.clear();
 
-        {
-            let _g = crate::mute_guard(false);
-            f();
-        }
+        crate::with_unmuted(f);
 
         let snapshot = Snapshot {
             events: s.borrow().events.clone(),
@@ -237,6 +285,7 @@ where
 /// Structure containing all thread-local state required to use the
 /// single-threaded allocation checker.
 pub struct State {
+    /// Events collected.
     pub events: Events,
 }
 
@@ -311,11 +360,15 @@ impl From<usize> for Pointer {
     }
 }
 
-/// Description of a zero-allocation.
+/// Description of an allocation that is zeroed by the allocator.
+///
+/// Zeroed allocation are guaranteed by the allocator to be zeroed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub struct AllocZeroed {
+    /// Indicates if the region was indeed zeroed.
     pub is_zeroed: Option<bool>,
+    /// The region that was allocated.
     pub alloc: Region,
 }
 
@@ -327,13 +380,19 @@ impl AllocZeroed {
 }
 
 /// Description of a reallocation.
+///
+/// Reallocations frees one location in memory and copies the shared prefix.
+/// If the region is the same size or smaller, it can usually be performed
+/// in-place.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub struct Realloc {
     /// Indicates if the subset of the old region was faithfully copied over
     /// to the new region.
     pub is_relocated: Option<bool>,
+    /// The region that was freed.
     pub free: Region,
+    /// The region that was allocated.
     pub alloc: Region,
 }
 
@@ -358,6 +417,8 @@ pub enum Event {
     /// A zerod allocation, with an optional boolean indicates if it is actually
     /// zeroed or not.
     AllocZeroed(AllocZeroed),
+    /// A reallocation that moves and resized memory from one location to
+    /// another.
     Realloc(Realloc),
 }
 
