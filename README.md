@@ -31,6 +31,18 @@ What it can't do:
 [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
 [see test]: tests/leaky_tests.rs
 
+# Features
+
+The following are features available, that changes how checkers work.
+
+* `realloc` - Enabling this feature causes checker to verify
+  that a `realloc` operation is correct. That bytes from the old region were
+  faithfully transferred to the new, resized one.
+  Since this can have a rather significant performance impact, it can be
+  disabled.
+* `macros` - Enables dependencies and re-exports of macros, like
+  [`#[checkers::test]`](https://docs.rs/checkers/latest/checkers/attr.test.html).
+
 # Examples
 
 It is recommended that you use checkers for [integration tests], which by

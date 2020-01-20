@@ -15,9 +15,10 @@ keywords = ["memory", "heap", "allocator"]
 categories = ["memory-management", "development-tools"]
 
 [dependencies]
-checkers-macros = {path = "./macros", version = "0.5.0"}
+checkers-macros = {path = "./macros", version = "0.5.0", optional = true}
 fxhash = {version = "0.2.1", optional = true}
 
 [features]
-default = ["realloc"]
+default = ["realloc", "macros"]
 realloc = ["fxhash"]
+macros = ["checkers-macros"]

@@ -34,6 +34,8 @@
 //!   faithfully transferred to the new, resized one.
 //!   Since this can have a rather significant performance impact, it can be
 //!   disabled.
+//! * `macros` - Enables dependencies and re-exports of macros, like
+//!   [`#[checkers::test]`](attr.test.html).
 //!
 //! # Examples
 //!
@@ -102,6 +104,7 @@ mod utils;
 pub use self::allocator::Allocator;
 pub use self::events::Events;
 pub use self::machine::{Machine, Region, Violation};
+#[cfg(feature = "macros")]
 pub use checkers_macros::test;
 
 thread_local! {
