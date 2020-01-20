@@ -19,6 +19,7 @@ checkers-macros = {path = "./macros", version = "0.5.1", optional = true}
 fxhash = {version = "0.2.1", optional = true}
 
 [features]
-default = ["realloc", "macros"]
+default = ["realloc", "zeroed", "macros"]
 realloc = ["fxhash"]
+zeroed = []
 macros = ["checkers-macros"]

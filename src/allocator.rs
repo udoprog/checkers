@@ -1,8 +1,5 @@
 use crate::{AllocZeroed, Event, Realloc, Region};
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    slice,
-};
+use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Allocator that needs to be installed.
 ///
@@ -102,10 +99,10 @@ where
 
         if !crate::is_muted() {
             crate::with_state(move |s| {
-                let is_zeroed = Some(crate::utils::is_zeroed(slice::from_raw_parts(
-                    ptr,
-                    layout.size(),
-                )));
+                #[cfg(feature = "zeroed")]
+                let is_zeroed = Some(crate::utils::is_zeroed_ptr(ptr, layout.size()));
+                #[cfg(not(feature = "zeroed"))]
+                let is_zeroed = None;
 
                 s.borrow_mut().events.push(Event::AllocZeroed(AllocZeroed {
                     is_zeroed,

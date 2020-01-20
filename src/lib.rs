@@ -25,17 +25,40 @@
 //! [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
 //! [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 //!
+//! # Safety
+//!
+//! With the default feature set, this library performs diagnostics which will
+//! produce undefined behavior if the underlying allocator is incorrectly
+//! implemented ([#1]). Therefore, it is recommended that you only use checkers for
+//! _testing_, and never in any production code.
+//!
+//! If you want to avoid this, you'll have to disable the `realloc` and `zeroed`
+//! features, but this will also produce less actionable diagnostics.
+//!
+//! In a future release, this behavior will be changed to be opt-in through feature
+//! flags instead of enabled by default.
+//!
 //! # Features
 //!
 //! The following are features available, that changes how checkers work.
 //!
 //! * `realloc` - Enabling this feature causes checker to verify
-//!   that a `realloc` operation is correct. That bytes from the old region were
-//!   faithfully transferred to the new, resized one.
+//!   that a [realloc] operation is correctly implemented. That bytes from the old
+//!   region were faithfully transferred to the new, resized one.
 //!   Since this can have a rather significant performance impact, it can be
 //!   disabled.
+//!   Note that if the underlying allocator is badly implemented this will produce
+//!   undefined behavior ([#1]).
+//! * `zeroed` - Enabling this feature causes checkers to verify that a call to
+//!   [alloc_zeroed] produces a region where all bytes are _set_ to zero.
+//!   Note that if the underlying allocator is badly implemented this will produce
+//!   undefined behavior ([#1]).
 //! * `macros` - Enables dependencies and re-exports of macros, like
 //!   [`#[checkers::test]`](attr.test.html).
+//!
+//! [realloc]: std::alloc::GlobalAlloc::realloc
+//! [alloc_zeroed]: std::alloc::GlobalAlloc::alloc_zeroed
+//! [#1]: https://github.com/udoprog/checkers/issues/1
 //!
 //! # Examples
 //!
