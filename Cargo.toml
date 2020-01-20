@@ -1,6 +1,6 @@
 [package]
 name = "checkers"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
@@ -15,7 +15,7 @@ keywords = ["memory", "heap", "allocator"]
 categories = ["memory-management", "development-tools"]
 
 [dependencies]
-checkers-macros = {path = "./macros", version = "0.5.0", optional = true}
+checkers-macros = {path = "./macros", version = "0.5.1", optional = true}
 fxhash = {version = "0.2.1", optional = true}
 
 [features]
