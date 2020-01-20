@@ -28,9 +28,8 @@
 //! # Safety
 //!
 //! With the default feature set, this library performs diagnostics which will
-//! produce undefined behavior if the underlying allocator is incorrectly
-//! implemented ([#1]). Therefore, it is recommended that you only use checkers for
-//! _testing_, and never in any production code.
+//! produce undefined behavior. Therefore, it is recommended that you only use
+//! checkers for _testing_, and never in any production code.
 //!
 //! If you want to avoid this, you'll have to disable the `realloc` and `zeroed`
 //! features, but this will also produce less actionable diagnostics.
@@ -42,17 +41,18 @@
 //!
 //! The following are features available, that changes how checkers work.
 //!
-//! * `realloc` - Enabling this feature causes checker to verify
-//!   that a [realloc] operation is correctly implemented. That bytes from the old
-//!   region were faithfully transferred to the new, resized one.
+//! * `realloc` - Enabling this feature causes checker to verify that a [realloc]
+//!   operation is correctly implemented. That bytes from the old region were
+//!   faithfully transferred to the new, resized one.
 //!   Since this can have a rather significant performance impact, it can be
 //!   disabled.
-//!   Note that if the underlying allocator is badly implemented this will produce
-//!   undefined behavior ([#1]).
+//!   Note that this will produce undefined behavior ([#1]) by reading uninitialized
+//!   memory, and should only be enabled to provide diagnostics on a best-effort
+//!   basis.
 //! * `zeroed` - Enabling this feature causes checkers to verify that a call to
 //!   [alloc_zeroed] produces a region where all bytes are _set_ to zero.
 //!   Note that if the underlying allocator is badly implemented this will produce
-//!   undefined behavior ([#1]).
+//!   undefined behavior ([#1]) since it could read uninitialized memory.
 //! * `macros` - Enables dependencies and re-exports of macros, like
 //!   [`#[checkers::test]`](attr.test.html).
 //!
