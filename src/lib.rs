@@ -197,7 +197,7 @@ pub fn mute_guard(muted: bool) -> MuteGuard {
     MuteGuard(MUTED.with(|s| s.replace(muted)))
 }
 
-/// Run the given closure while the allocator is muted.
+/// Run the given closure while the allocator is unmuted.
 ///
 /// See [is_muted] for details on what this means.
 pub fn with_unmuted<F, R>(f: F) -> R
@@ -205,6 +205,37 @@ where
     F: FnOnce() -> R,
 {
     let _g = crate::mute_guard(false);
+    f()
+}
+
+/// Run the given closure while the allocator is muted. This can be used to
+/// whitelist sections of code where the allocation checker should be disabled.
+///
+/// See [is_muted] for details on what this means.
+///
+/// # Examples
+///
+/// ```rust
+/// #[global_allocator]
+/// static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
+///
+/// lazy_static::lazy_static! {
+///    pub static ref EX: Box<u32> = checkers::with_muted(|| Box::new(123));
+/// }
+///
+/// let snapshot = checkers::with(|| {
+///     let _ = &*EX;
+/// });
+///
+/// // Snapshot can be successfully verified since we're excluding the static
+/// // allocation from analysis.
+/// checkers::verify!(snapshot);
+/// ```
+pub fn with_muted<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let _g = crate::mute_guard(true);
     f()
 }
 
@@ -265,6 +296,15 @@ macro_rules! verify {
 pub struct Snapshot {
     /// Snapshot of all collected events.
     pub events: Events,
+}
+
+impl Snapshot {
+    /// Validate the current snapshot.
+    ///
+    /// See [Events::validate] for more documentation.
+    pub fn validate(&self, errors: &mut Vec<Violation>) {
+        self.events.validate(errors);
+    }
 }
 
 /// Run the specified closure and return a snapshot of the memory state
