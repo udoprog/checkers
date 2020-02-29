@@ -18,6 +18,9 @@ categories = ["memory-management", "development-tools"]
 checkers-macros = {path = "./macros", version = "0.5.1", optional = true}
 fxhash = {version = "0.2.1", optional = true}
 
+[dev-dependencies]
+lazy_static = "1.4.0"
+
 [features]
 default = ["realloc", "zeroed", "macros"]
 realloc = ["fxhash"]
