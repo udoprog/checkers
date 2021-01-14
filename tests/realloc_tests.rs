@@ -1,6 +1,8 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Note: allocator which intentionally doesn't copy all necessary bytes.
+/// This test relies on the current Rust Vec allocation strategy, which may change
+/// and is currently found at <https://doc.rust-lang.org/1.49.0/src/alloc/raw_vec.rs.html#416-422>
 struct TestAllocator;
 
 unsafe impl GlobalAlloc for TestAllocator {
@@ -15,7 +17,7 @@ unsafe impl GlobalAlloc for TestAllocator {
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let new_ptr = System.realloc(ptr, layout, new_size);
 
-        if !checkers::is_muted() && new_size == 8 {
+        if !checkers::is_muted() && new_size == 16 {
             let v = *new_ptr.add(3);
             *new_ptr.add(3) = !v;
         }
@@ -44,7 +46,7 @@ fn test_realloc() {
     assert!(snapshot.events[0].is_alloc_with(|r| r.size == 4));
     assert!(snapshot.events[1].is_realloc_with(|r| {
         // Note: not correctly relocated since we corrupted the third byte.
-        r.is_relocated == Some(false) && r.free.size == 4 && r.alloc.size == 8
+        r.is_relocated == Some(false) && r.free.size == 4 && r.alloc.size == 16
     }));
-    assert!(snapshot.events[2].is_free_with(|r| r.size == 8));
+    assert!(snapshot.events[2].is_free_with(|r| r.size == 16));
 }
