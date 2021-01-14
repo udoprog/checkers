@@ -4,7 +4,11 @@ static CHECKED: checkers::Allocator = checkers::Allocator::system();
 #[checkers::test]
 #[should_panic]
 fn test_leak_box() {
-    let _ = Box::into_raw(Box::new(0u128));
+    let x = Box::into_raw(Box::new(0u128));
+    // Prevent optimization in `--release`
+    unsafe {
+        std::ptr::write_volatile(x, 1u128);
+    }
 }
 
 #[checkers::test]
@@ -22,5 +26,9 @@ fn verify_test_custom_verify(state: &mut checkers::State) {
 
 #[checkers::test(verify = "verify_test_custom_verify")]
 fn test_custom_verify() {
-    let _ = Box::into_raw(vec![1, 2, 3, 4, 5].into_boxed_slice());
+    let x = Box::into_raw(vec![1, 2, 3, 4, 5].into_boxed_slice());
+    // Prevent optimization in `--release`
+    unsafe {
+        std::ptr::write_volatile(x as _, 6);
+    }
 }
