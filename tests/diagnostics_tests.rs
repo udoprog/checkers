@@ -4,7 +4,12 @@ static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 #[test]
 fn test_event_inspection() {
     let snapshot = checkers::with(|| {
-        let _ = vec![1, 2, 3, 4];
+        let mut x = vec![1, 2, 3, 4];
+        // Prevent optimization in `--release`
+        unsafe {
+            let base = x.as_mut_ptr();
+            std::ptr::write_volatile(base, 5);
+        }
     });
 
     assert_eq!(2, snapshot.events.len());
