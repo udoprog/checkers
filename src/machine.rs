@@ -171,7 +171,8 @@ impl Machine {
         }
 
         self.memory_used = self.memory_used.saturating_add(requested.size);
-        debug_assert!(self.regions.insert(requested.ptr, requested).is_none());
+        let existing = self.regions.insert(requested.ptr, requested); 
+        debug_assert!(existing.is_none());
         Ok(())
     }
 
