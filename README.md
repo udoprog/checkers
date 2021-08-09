@@ -29,9 +29,9 @@ What it can't do:
 * Detect out-of-bounds accesses.
 
 [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
-[see test]: tests/leaky_tests.rs
+[see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 
-# Safety
+## Safety
 
 With the default feature set, this library performs diagnostics which will
 produce undefined behavior. Therefore, it is recommended that you only use
@@ -43,7 +43,7 @@ features, but this will also produce less actionable diagnostics.
 In a future release, this behavior will be changed to be opt-in through feature
 flags instead of enabled by default.
 
-# Features
+## Features
 
 The following are features available, that changes how checkers work.
 
@@ -62,11 +62,11 @@ The following are features available, that changes how checkers work.
 * `macros` - Enables dependencies and re-exports of macros, like
   [`#[checkers::test]`](attr.test.html).
 
-[realloc]: https://doc.rust-lang.org/nightly/core/alloc/trait.GlobalAlloc.html#method.realloc
-[alloc_zeroed]: https://doc.rust-lang.org/nightly/core/alloc/trait.GlobalAlloc.html#method.alloc_zeroed
+[realloc]: std::alloc::GlobalAlloc::realloc
+[alloc_zeroed]: std::alloc::GlobalAlloc::alloc_zeroed
 [#1]: https://github.com/udoprog/checkers/issues/1
 
-# Examples
+## Examples
 
 It is recommended that you use checkers for [integration tests], which by
 default lives in the `./tests` directory. Each file in this directory will be
@@ -75,9 +75,13 @@ isolated.
 
 [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
 
-We then use checkers by installing `checkers::Allocator` as the global
-allocator, after this we can make use of [`#[checkers::test]`](https://docs.rs/checkers/latest/checkers/attr.test.html) attribute macro or
-the [`checkers::with`](https://docs.rs/checkers/latest/checkers/fn.with.html) function in our tests.
+We then use checkers by installing [`checkers::Allocator`] as the global
+allocator, after this we can make use of [`#[checkers::test]`](attr.test.html) attribute macro or
+the [`checkers::with`] function in our tests.
+
+[`#[checkers::test]`]: https://docs.rs/checkers/latest/checkers/attr.test.html
+[`checkers::Allocator`]: https://docs.rs/checkers/latest/checkers/struct.Allocator.html
+[`checkers::with`]: https://docs.rs/checkers/latest/checkers/fn.with.html
 
 ```rust
 #[global_allocator]
@@ -91,7 +95,7 @@ fn test_allocations() {
 
 The above would result in the following test output:
 
-```text
+```
 dangling region: 0x226e5784f30-0x226e5784f40 (size: 16, align: 8).
 thread 'test_leak_box' panicked at 'allocation checks failed', tests\leaky_tests.rs:4:1
 ```
@@ -116,3 +120,5 @@ fn test_event_inspection() {
     assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 }
 ```
+
+License: MIT/Apache-2.0

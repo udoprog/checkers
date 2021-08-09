@@ -1,3 +1,7 @@
+//! [![Documentation](https://docs.rs/checkers/badge.svg)](https://docs.rs/checkers)
+//! [![Crates](https://img.shields.io/crates/v/checkers.svg)](https://crates.io/crates/checkers)     
+//! [![Actions Status](https://github.com/udoprog/checkers/workflows/Rust/badge.svg)](https://github.com/udoprog/checkers/actions)
+//!
 //! Checkers is a simple allocation sanitizer for Rust. It plugs in through the
 //! [global allocator] and can sanity check your unsafe Rust during integration
 //! testing. Since it plugs in through the global allocator it doesn't require any
@@ -73,8 +77,9 @@
 //! allocator, after this we can make use of [`#[checkers::test]`](attr.test.html) attribute macro or
 //! the [`checkers::with`] function in our tests.
 //!
-//! [`checkers::Allocator`]: crate::Allocator
-//! [`checkers::with`]: crate::with
+//! [`#[checkers::test]`]: https://docs.rs/checkers/latest/checkers/attr.test.html
+//! [`checkers::Allocator`]: https://docs.rs/checkers/latest/checkers/struct.Allocator.html
+//! [`checkers::with`]: https://docs.rs/checkers/latest/checkers/fn.with.html
 //!
 //! ```rust
 //! #[global_allocator]
@@ -278,16 +283,18 @@ impl Drop for MuteGuard {
 #[macro_export]
 macro_rules! verify {
     ($state:expr) => {
-        let mut validations = Vec::new();
-        $state.validate(&mut validations);
+        $crate::with_muted(|| {
+            let mut validations = Vec::new();
+            $state.validate(&mut validations);
 
-        for e in &validations {
-            eprintln!("{}", e);
-        }
+            for e in &validations {
+                eprintln!("{}", e);
+            }
 
-        if !validations.is_empty() {
-            panic!("allocation checks failed");
-        }
+            if !validations.is_empty() {
+                panic!("allocation checks failed");
+            }
+        });
     };
 }
 
@@ -425,21 +432,41 @@ impl From<usize> for Pointer {
     }
 }
 
+/// Allocation metadata.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct Alloc {
+    /// The allocated region.
+    pub region: Region,
+    /// Captured backtrace.
+    pub backtrace: Option<backtrace::Backtrace>,
+}
+
+impl Alloc {
+    /// Construct a new allocation without a complete backtrace.
+    pub fn without_backtrace(region: Region) -> Self {
+        Self {
+            region,
+            backtrace: None,
+        }
+    }
+}
+
 /// Description of an allocation that is zeroed by the allocator.
 ///
 /// Zeroed allocation are guaranteed by the allocator to be zeroed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct AllocZeroed {
     /// Indicates if the region was indeed zeroed.
     pub is_zeroed: Option<bool>,
     /// The region that was allocated.
-    pub alloc: Region,
+    pub alloc: Alloc,
 }
 
 impl AllocZeroed {
     /// Construct a new reallocation.
-    pub fn new(is_zeroed: Option<bool>, alloc: Region) -> Self {
+    pub fn new(is_zeroed: Option<bool>, alloc: Alloc) -> Self {
         Self { is_zeroed, alloc }
     }
 }
@@ -449,7 +476,7 @@ impl AllocZeroed {
 /// Reallocations frees one location in memory and copies the shared prefix.
 /// If the region is the same size or smaller, it can usually be performed
 /// in-place.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Realloc {
     /// Indicates if the subset of the old region was faithfully copied over
@@ -458,12 +485,12 @@ pub struct Realloc {
     /// The region that was freed.
     pub free: Region,
     /// The region that was allocated.
-    pub alloc: Region,
+    pub alloc: Alloc,
 }
 
 impl Realloc {
     /// Construct a new reallocation.
-    pub fn new(is_relocated: Option<bool>, free: Region, alloc: Region) -> Self {
+    pub fn new(is_relocated: Option<bool>, free: Region, alloc: Alloc) -> Self {
         Self {
             is_relocated,
             free,

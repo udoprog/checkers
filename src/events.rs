@@ -60,11 +60,10 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Events, Event, Region};
+    /// use checkers::{Event::*, Alloc, Events, Region};
     /// let mut events = Events::new();
-    /// let event = Event::Alloc(Region::new(10.into(), 10, 1));
-    /// events.push(event);
-    /// assert_eq!(event, events[0]);
+    /// events.push(Alloc(Alloc::without_backtrace(Region::new(10.into(), 10, 1))));
+    /// assert!(matches!(&events[0], &Alloc(..)));
     /// ```
     pub fn push(&mut self, event: Event) {
         // Note: pushing into an at-capacity collection would allocate, so we
@@ -82,9 +81,9 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Events, Event, Region};
+    /// use checkers::{Event::*, Alloc, Events, Event, Region};
     /// let mut events = Events::new();
-    /// events.push(Event::Alloc(Region::new(10.into(), 10, 1)));
+    /// events.push(Alloc(Alloc::without_backtrace(Region::new(10.into(), 10, 1))));
     /// assert_eq!(1, events.allocs());
     /// assert_eq!(0, events.frees());
     /// ```
@@ -103,13 +102,13 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Events, Event, Region, Realloc};
+    /// use checkers::{Alloc, Events, Event, Region, Realloc};
     /// let mut events = Events::new();
     ///
     /// events.push(Event::Realloc(Realloc::new(
     ///     Some(true),
     ///     Region::new(10.into(), 10, 1),
-    ///     Region::new(20.into(), 10, 1)
+    ///     Alloc::without_backtrace(Region::new(20.into(), 10, 1))
     /// )));
     ///
     /// assert_eq!(1, events.reallocs());
@@ -156,13 +155,13 @@ impl Events {
         let mut machine = Machine::default();
 
         for event in self.as_slice() {
-            if let Err(e) = machine.push(*event) {
+            if let Err(e) = machine.push(event) {
                 errors.push(e);
             }
         }
 
-        for region in machine.trailing_regions() {
-            errors.push(Violation::Leaked { region });
+        for alloc in machine.trailing_regions() {
+            errors.push(Violation::Leaked { alloc });
         }
     }
 
@@ -173,12 +172,12 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Events, Event, Region};
+    /// use checkers::{Alloc, Event::*, Events, Region};
     /// let mut events = Events::new();
-    /// events.push(Event::Alloc(Region::new(0x10.into(), 0x10, 1)));
-    /// events.push(Event::Alloc(Region::new(0x20.into(), 0x10, 1)));
-    /// events.push(Event::Free(Region::new(0x10.into(), 0x10, 1)));
-    /// assert_eq!(Ok(0x20), events.max_memory_used());
+    /// events.push(Alloc(Alloc::without_backtrace(Region::new(0x10.into(), 0x10, 1))));
+    /// events.push(Alloc(Alloc::without_backtrace(Region::new(0x20.into(), 0x10, 1))));
+    /// events.push(Free(Region::new(0x10.into(), 0x10, 1)));
+    /// assert_eq!(0x20, events.max_memory_used().unwrap());
     /// ```
     pub fn max_memory_used(&self) -> Result<usize, Violation> {
         let mut machine = Machine::default();
@@ -186,7 +185,7 @@ impl Events {
         let mut max = 0usize;
 
         for event in self.as_slice() {
-            machine.push(*event)?;
+            machine.push(event)?;
             max = usize::max(machine.memory_used, max);
         }
 

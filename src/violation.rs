@@ -1,9 +1,9 @@
 use std::fmt;
 
-use crate::Region;
+use crate::{Alloc, Region};
 
 /// A single violation in the variants enforced by checkers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Violation {
     /// A region produced by the allocator `requested`, overlaps with at least
     /// on `existing` allocation.
@@ -59,7 +59,7 @@ pub enum Violation {
     /// A `region` was leaked. In that it was allocated but never freed.
     Leaked {
         /// The leaked region.
-        region: Region,
+        alloc: Alloc,
     },
 }
 
@@ -71,9 +71,9 @@ impl Violation {
     /// # Examples
     ///
     /// ```rust
-    /// # use checkers::{Region, Violation};
+    /// # use checkers::{Alloc, Region, Violation};
     /// let violation = Violation::Leaked {
-    ///     region: Region::new(42.into(), 20, 4),
+    ///     alloc: Alloc::without_backtrace(Region::new(42.into(), 20, 4)),
     /// };
     /// assert!(violation.is_leaked_with(|r| r.size == 20 && r.align == 4));
     ///
@@ -85,8 +85,8 @@ impl Violation {
     where
         F: FnOnce(Region) -> bool,
     {
-        match *self {
-            Self::Leaked { region } => f(region),
+        match self {
+            Self::Leaked { alloc } => f(alloc.region),
             _ => false,
         }
     }
@@ -134,7 +134,10 @@ impl fmt::Display for Violation {
                 requested, existing
             ),
             Self::MissingFree { requested } => write!(fmt, "Freed missing region ({})", requested),
-            Self::Leaked { region } => write!(fmt, "Dangling region ({})", region),
+            Self::Leaked { alloc } => {
+                writeln!(fmt, "Dangling region ({})", alloc.region)?;
+                write!(fmt, "Backtrace: {:?}", alloc.backtrace)
+            }
         }
     }
 }

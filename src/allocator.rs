@@ -1,4 +1,4 @@
-use crate::{AllocZeroed, Event, Realloc, Region};
+use crate::{Alloc, AllocZeroed, Event, Realloc, Region};
 use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Allocator that needs to be installed.
@@ -67,11 +67,17 @@ where
         }
 
         crate::with_state(move |s| {
-            s.borrow_mut().events.push(Event::Alloc(Region {
+            let region = Region {
                 ptr: ptr.into(),
                 size: layout.size(),
                 align: layout.align(),
-            }));
+            };
+
+            let backtrace = crate::with_muted(|| Some(backtrace::Backtrace::new()));
+
+            s.borrow_mut()
+                .events
+                .push(Event::Alloc(Alloc { region, backtrace }));
         });
 
         ptr
@@ -114,13 +120,17 @@ where
             #[cfg(not(feature = "zeroed"))]
             let is_zeroed = None;
 
+            let region = Region {
+                ptr: ptr.into(),
+                size: layout.size(),
+                align: layout.align(),
+            };
+
+            let backtrace = crate::with_muted(|| Some(backtrace::Backtrace::new()));
+
             s.borrow_mut().events.push(Event::AllocZeroed(AllocZeroed {
                 is_zeroed,
-                alloc: Region {
-                    ptr: ptr.into(),
-                    size: layout.size(),
-                    align: layout.align(),
-                },
+                alloc: Alloc { region, backtrace },
             }));
         });
 
@@ -175,16 +185,18 @@ where
                 align: layout.align(),
             };
 
-            let alloc = Region {
+            let region = Region {
                 ptr: new_ptr.into(),
                 size: new_size,
                 align: layout.align(),
             };
 
+            let backtrace = crate::with_muted(|| Some(backtrace::Backtrace::new()));
+
             s.borrow_mut().events.push(Event::Realloc(Realloc {
                 is_relocated,
                 free,
-                alloc,
+                alloc: Alloc { region, backtrace },
             }));
         });
 
