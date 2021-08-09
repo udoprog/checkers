@@ -1,13 +1,13 @@
 //! A single allocator event.
 
-use crate::{AllocZeroed, Realloc, Region};
+use crate::{Alloc, AllocZeroed, Realloc, Region};
 
 /// Metadata for a single allocation or deallocation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Event {
     /// An allocation.
-    Alloc(Region),
+    Alloc(Alloc),
     /// A deallocation.
     Free(Region),
     /// A zerod allocation, with an optional boolean indicates if it is actually
@@ -34,17 +34,22 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// let event = checkers::Event::Alloc(checkers::Region::new(100.into(), 100, 4));
+    /// use checkers::{Alloc, Event, Region};
+    /// let event = Event::Alloc(Alloc::without_backtrace(Region::new(100.into(), 100, 4)));
     ///
     /// assert!(event.is_alloc_with(|r| r.size == 100 && r.align == 4));
     /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
     /// ```
-    pub fn is_alloc_with<F>(self, f: F) -> bool
+    pub fn is_alloc_with<F>(&self, f: F) -> bool
     where
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Alloc(region) | Self::AllocZeroed(AllocZeroed { alloc: region, .. }) => f(region),
+            Self::Alloc(Alloc { region, .. })
+            | Self::AllocZeroed(AllocZeroed {
+                alloc: Alloc { region, .. },
+                ..
+            }) => f(*region),
             _ => false,
         }
     }
@@ -60,12 +65,12 @@ impl Event {
     /// assert!(!event.is_alloc_with(|r| r.size == 100 && r.align == 4));
     /// assert!(event.is_free_with(|r| r.size == 100 && r.align == 4));
     /// ```
-    pub fn is_free_with<F>(self, f: F) -> bool
+    pub fn is_free_with<F>(&self, f: F) -> bool
     where
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Free(region) => f(region),
+            Self::Free(region) => f(*region),
             _ => false,
         }
     }
@@ -76,15 +81,18 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Event, Region, AllocZeroed};
-    /// let event = Event::AllocZeroed(AllocZeroed::new(Some(true), Region::new(100.into(), 100, 4)));
+    /// use checkers::{Alloc, Event, Region, AllocZeroed};
+    /// let event = Event::AllocZeroed(AllocZeroed::new(
+    ///     Some(true),
+    ///     Alloc::without_backtrace(Region::new(100.into(), 100, 4))
+    /// ));
     ///
-    /// assert!(event.is_alloc_zeroed_with(|r| r.alloc.size == 100 && r.alloc.align == 4));
+    /// assert!(event.is_alloc_zeroed_with(|r| r.alloc.region.size == 100 && r.alloc.region.align == 4));
     /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
     /// ```
-    pub fn is_alloc_zeroed_with<F>(self, f: F) -> bool
+    pub fn is_alloc_zeroed_with<F>(&self, f: F) -> bool
     where
-        F: FnOnce(AllocZeroed) -> bool,
+        F: FnOnce(&AllocZeroed) -> bool,
     {
         match self {
             Self::AllocZeroed(alloc_zeroed) => f(alloc_zeroed),
@@ -98,19 +106,19 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Event, Region, Realloc};
+    /// use checkers::{Event::*, Alloc, Region, Realloc};
     ///
-    /// let event = Event::Realloc(Realloc::new(
+    /// let event = Realloc(Realloc::new(
     ///     Some(true),
     ///     Region::new(10.into(), 10, 1),
-    ///     Region::new(20.into(), 20, 1)
+    ///     Alloc::without_backtrace(Region::new(20.into(), 20, 1))
     /// ));
     ///
-    /// assert!(event.is_realloc_with(|r| r.free.size == 10 && r.alloc.size == 20));
+    /// assert!(event.is_realloc_with(|r| r.free.size == 10 && r.alloc.region.size == 20));
     /// ```
-    pub fn is_realloc_with<F>(self, f: F) -> bool
+    pub fn is_realloc_with<F>(&self, f: F) -> bool
     where
-        F: FnOnce(Realloc) -> bool,
+        F: FnOnce(&Realloc) -> bool,
     {
         match self {
             Self::Realloc(realloc) => f(realloc),
@@ -130,7 +138,7 @@ impl Event {
     /// assert!(Event::AllocZeroedFailed.is_failed());
     /// assert!(Event::ReallocFailed.is_failed());
     /// ```
-    pub fn is_failed(self) -> bool {
+    pub fn is_failed(&self) -> bool {
         match self {
             Self::AllocFailed { .. }
             | Self::AllocZeroedFailed { .. }

@@ -41,6 +41,6 @@ fn test_realloc() {
     // Note: is_zeroed is false since we intentionally corrupt it in the
     // allocator.
     assert!(snapshot.events[0]
-        .is_alloc_zeroed_with(|r| r.is_zeroed == Some(false) && r.alloc.size == 32));
+        .is_alloc_zeroed_with(|r| r.is_zeroed == Some(false) && r.alloc.region.size == 32));
     assert!(snapshot.events[1].is_free_with(|r| r.size == 32));
 }
