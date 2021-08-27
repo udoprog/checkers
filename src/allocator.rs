@@ -73,7 +73,7 @@ where
                 align: layout.align(),
             };
 
-            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+            let backtrace = crate::with_muted(|| crate::bt::capture());
 
             s.borrow_mut()
                 .events
@@ -91,7 +91,7 @@ where
         }
 
         crate::with_state(move |s| {
-            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+            let backtrace = crate::with_muted(|| crate::bt::capture());
 
             s.borrow_mut().events.push(Event::Free(Request {
                 region: Region {
@@ -125,7 +125,7 @@ where
             #[cfg(not(feature = "zeroed"))]
             let is_zeroed = None;
 
-            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+            let backtrace = crate::with_muted(|| crate::bt::capture());
 
             let request = Request {
                 region: Region {
@@ -149,7 +149,7 @@ where
         // scenario gracefully.
         if crate::is_muted() || ptr.is_null() {
             if ptr.is_null() {
-                let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+                let backtrace = crate::with_muted(|| crate::bt::capture());
 
                 crate::with_state(|s| {
                     s.borrow_mut()
@@ -190,7 +190,7 @@ where
             #[cfg(not(feature = "realloc"))]
             let is_relocated = None;
 
-            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+            let backtrace = crate::with_muted(|| crate::bt::capture());
 
             let free = Region {
                 ptr: old_ptr,

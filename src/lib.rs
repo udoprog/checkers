@@ -8,8 +8,6 @@
 //! additional dependencies and works for all platforms - but it is more limited in
 //! what it can verify.
 //!
-//! [global allocator]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html
-//!
 //! It can check for the following things:
 //! * Double-frees.
 //! * Memory leaks.
@@ -25,9 +23,6 @@
 //! * Test multithreaded code. Since the allocator is global, it is difficult to
 //!   scope the state for each test case.
 //! * Detect out-of-bounds accesses.
-//!
-//! [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
-//! [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 //!
 //! # Safety
 //!
@@ -58,7 +53,9 @@
 //!   Note that if the underlying allocator is badly implemented this will produce
 //!   undefined behavior ([#1]) since it could read uninitialized memory.
 //! * `macros` - Enables dependencies and re-exports of macros, like
-//!   [`#[checkers::test]`](attr.test.html).
+//!   [`#[checkers::test]`][checkers-test].
+//! * `backtrace` - Enables the capture and rendering of backtraces. If
+//!   disabled, any fields containing backtraces will be `None`.
 //!
 //! [realloc]: std::alloc::GlobalAlloc::realloc
 //! [alloc_zeroed]: std::alloc::GlobalAlloc::alloc_zeroed
@@ -71,15 +68,10 @@
 //! compiled as a separate program, so the use of the global allocator can be more
 //! isolated.
 //!
-//! [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
-//!
-//! We then use checkers by installing [`checkers::Allocator`] as the global
-//! allocator, after this we can make use of [`#[checkers::test]`](attr.test.html) attribute macro or
-//! the [`checkers::with`] function in our tests.
-//!
-//! [`#[checkers::test]`]: https://docs.rs/checkers/latest/checkers/attr.test.html
-//! [`checkers::Allocator`]: https://docs.rs/checkers/latest/checkers/struct.Allocator.html
-//! [`checkers::with`]: https://docs.rs/checkers/latest/checkers/fn.with.html
+//! We then use checkers by installing
+//! [`checkers::Allocator`][checkers-allocator] as the global allocator, after
+//! this we can make use of [`#[checkers::test]`][checkers-test] attribute macro
+//! or the [`checkers::with`][checkers-with] function in our tests.
 //!
 //! ```rust
 //! #[global_allocator]
@@ -98,7 +90,8 @@
 //! thread 'test_leak_box' panicked at 'allocation checks failed', tests\leaky_tests.rs:4:1
 //! ```
 //!
-//! With `checkers::with`, we can perform more detailed diagnostics:
+//! With [`checkers::with`][checkers-with], we can perform more detailed
+//! diagnostics:
 //!
 //! ```rust
 //! #[global_allocator]
@@ -118,13 +111,19 @@
 //!     assert!(snapshot.events.max_memory_used().unwrap() >= 16);
 //! }
 //! ```
+//!
+//! [checkers-allocator]: https://docs.rs/checkers/latest/checkers/struct.Allocator.html
+//! [checkers-test]: https://docs.rs/checkers/latest/checkers/attr.test.html
+//! [checkers-with]: https://docs.rs/checkers/latest/checkers/fn.with.html
+//! [global allocator]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html
+//! [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
+//! [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
+//! [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
 
 #![deny(missing_docs)]
 
-use std::{
-    cell::{Cell, RefCell},
-    fmt,
-};
+use std::cell::{Cell, RefCell};
+use std::fmt;
 
 mod allocator;
 #[cfg(feature = "backtrace")]
