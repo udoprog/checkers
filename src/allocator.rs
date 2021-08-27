@@ -1,4 +1,4 @@
-use crate::{Alloc, AllocZeroed, Event, Realloc, Region};
+use crate::{AllocZeroed, Event, Realloc, ReallocNull, Region, Request};
 use std::alloc::{GlobalAlloc, Layout, System};
 
 /// Allocator that needs to be installed.
@@ -73,11 +73,11 @@ where
                 align: layout.align(),
             };
 
-            let backtrace = crate::with_muted(|| Some(backtrace::Backtrace::new()));
+            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
 
             s.borrow_mut()
                 .events
-                .push(Event::Alloc(Alloc { region, backtrace }));
+                .push(Event::Alloc(Request { region, backtrace }));
         });
 
         ptr
@@ -91,10 +91,15 @@ where
         }
 
         crate::with_state(move |s| {
-            s.borrow_mut().events.push(Event::Free(Region {
-                ptr: ptr.into(),
-                size: layout.size(),
-                align: layout.align(),
+            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+
+            s.borrow_mut().events.push(Event::Free(Request {
+                region: Region {
+                    ptr: ptr.into(),
+                    size: layout.size(),
+                    align: layout.align(),
+                },
+                backtrace,
             }));
         });
     }
@@ -120,18 +125,20 @@ where
             #[cfg(not(feature = "zeroed"))]
             let is_zeroed = None;
 
-            let region = Region {
-                ptr: ptr.into(),
-                size: layout.size(),
-                align: layout.align(),
+            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+
+            let request = Request {
+                region: Region {
+                    ptr: ptr.into(),
+                    size: layout.size(),
+                    align: layout.align(),
+                },
+                backtrace,
             };
 
-            let backtrace = crate::with_muted(|| Some(backtrace::Backtrace::new()));
-
-            s.borrow_mut().events.push(Event::AllocZeroed(AllocZeroed {
-                is_zeroed,
-                alloc: Alloc { region, backtrace },
-            }));
+            s.borrow_mut()
+                .events
+                .push(Event::AllocZeroed(AllocZeroed { is_zeroed, request }));
         });
 
         ptr
@@ -142,8 +149,12 @@ where
         // scenario gracefully.
         if crate::is_muted() || ptr.is_null() {
             if ptr.is_null() {
+                let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+
                 crate::with_state(|s| {
-                    s.borrow_mut().events.push(Event::ReallocNull);
+                    s.borrow_mut()
+                        .events
+                        .push(Event::ReallocNull(ReallocNull { backtrace }));
                 });
             }
 
@@ -179,24 +190,25 @@ where
             #[cfg(not(feature = "realloc"))]
             let is_relocated = None;
 
+            let backtrace = crate::with_muted(|| Some(crate::bt::Backtrace::new()));
+
             let free = Region {
                 ptr: old_ptr,
                 size: layout.size(),
                 align: layout.align(),
             };
 
-            let region = Region {
+            let alloc = Region {
                 ptr: new_ptr.into(),
                 size: new_size,
                 align: layout.align(),
             };
 
-            let backtrace = crate::with_muted(|| Some(backtrace::Backtrace::new()));
-
             s.borrow_mut().events.push(Event::Realloc(Realloc {
                 is_relocated,
                 free,
-                alloc: Alloc { region, backtrace },
+                alloc,
+                backtrace,
             }));
         });
 

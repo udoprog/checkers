@@ -1,15 +1,15 @@
 //! A single allocator event.
 
-use crate::{Alloc, AllocZeroed, Realloc, Region};
+use crate::{AllocZeroed, Realloc, ReallocNull, Region, Request};
 
 /// Metadata for a single allocation or deallocation.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Event {
     /// An allocation.
-    Alloc(Alloc),
+    Alloc(Request),
     /// A deallocation.
-    Free(Region),
+    Free(Request),
     /// A zerod allocation, with an optional boolean indicates if it is actually
     /// zeroed or not.
     AllocZeroed(AllocZeroed),
@@ -21,7 +21,7 @@ pub enum Event {
     /// A zero allocation that failed (produced null).
     AllocZeroedFailed,
     /// Allocator was asked to reallocate unallocated memory.
-    ReallocNull,
+    ReallocNull(ReallocNull),
     /// A reallocation failed (produced null), and the previous region is left
     /// unchanged.
     ReallocFailed,
@@ -34,8 +34,10 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Alloc, Event, Region};
-    /// let event = Event::Alloc(Alloc::without_backtrace(Region::new(100.into(), 100, 4)));
+    /// use checkers::{Event::*, Request, Region};
+    ///
+    /// let request = Request::without_backtrace(Region::new(100.into(), 100, 4));
+    /// let event = Alloc(request);
     ///
     /// assert!(event.is_alloc_with(|r| r.size == 100 && r.align == 4));
     /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
@@ -45,11 +47,9 @@ impl Event {
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Alloc(Alloc { region, .. })
-            | Self::AllocZeroed(AllocZeroed {
-                alloc: Alloc { region, .. },
-                ..
-            }) => f(*region),
+            Self::Alloc(request) | Self::AllocZeroed(AllocZeroed { request, .. }) => {
+                f(request.region)
+            }
             _ => false,
         }
     }
@@ -60,7 +60,10 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// let event = checkers::Event::Free(checkers::Region::new(100.into(), 100, 4));
+    /// use checkers::{Event::*, Region, Request};
+    ///
+    /// let request = Request::without_backtrace(Region::new(100.into(), 100, 4));
+    /// let event = Free(request);
     ///
     /// assert!(!event.is_alloc_with(|r| r.size == 100 && r.align == 4));
     /// assert!(event.is_free_with(|r| r.size == 100 && r.align == 4));
@@ -70,7 +73,7 @@ impl Event {
         F: FnOnce(Region) -> bool,
     {
         match self {
-            Self::Free(region) => f(*region),
+            Self::Free(request) => f(request.region),
             _ => false,
         }
     }
@@ -81,13 +84,14 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Alloc, Event, Region, AllocZeroed};
-    /// let event = Event::AllocZeroed(AllocZeroed::new(
+    /// use checkers::{Event::*, Request, Region, AllocZeroed};
+    ///
+    /// let event = AllocZeroed(AllocZeroed::new(
     ///     Some(true),
-    ///     Alloc::without_backtrace(Region::new(100.into(), 100, 4))
+    ///     Request::without_backtrace(Region::new(100.into(), 100, 4))
     /// ));
     ///
-    /// assert!(event.is_alloc_zeroed_with(|r| r.alloc.region.size == 100 && r.alloc.region.align == 4));
+    /// assert!(event.is_alloc_zeroed_with(|r| r.request.region.size == 100 && r.request.region.align == 4));
     /// assert!(!event.is_free_with(|r| r.size == 100 && r.align == 4));
     /// ```
     pub fn is_alloc_zeroed_with<F>(&self, f: F) -> bool
@@ -106,15 +110,15 @@ impl Event {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Event::*, Alloc, Region, Realloc};
+    /// use checkers::{Event::*, Realloc, Region, Request};
     ///
-    /// let event = Realloc(Realloc::new(
+    /// let event = Realloc(Realloc::without_backtrace(
     ///     Some(true),
     ///     Region::new(10.into(), 10, 1),
-    ///     Alloc::without_backtrace(Region::new(20.into(), 20, 1))
+    ///     Region::new(20.into(), 20, 1)
     /// ));
     ///
-    /// assert!(event.is_realloc_with(|r| r.free.size == 10 && r.alloc.region.size == 20));
+    /// assert!(event.is_realloc_with(|r| r.free.size == 10 && r.alloc.size == 20));
     /// ```
     pub fn is_realloc_with<F>(&self, f: F) -> bool
     where

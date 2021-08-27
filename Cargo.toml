@@ -17,7 +17,7 @@ categories = ["memory-management", "development-tools"]
 [dependencies]
 checkers-macros = {path = "./macros", version = "0.5.7", optional = true}
 fxhash = {version = "0.2.1", optional = true}
-backtrace = "0.3.61"
+backtrace = {version = "0.3.61", optional = true}
 
 [dev-dependencies]
 lazy_static = "1.4.0"
