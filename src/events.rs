@@ -60,9 +60,12 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Event::*, Alloc, Events, Region};
+    /// use checkers::{Event::*, Request, Events, Region};
     /// let mut events = Events::new();
-    /// events.push(Alloc(Alloc::without_backtrace(Region::new(10.into(), 10, 1))));
+    ///
+    /// let request = Request::without_backtrace(Region::new(10.into(), 10, 1));
+    /// events.push(Alloc(request));
+    ///
     /// assert!(matches!(&events[0], &Alloc(..)));
     /// ```
     pub fn push(&mut self, event: Event) {
@@ -81,9 +84,12 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Event::*, Alloc, Events, Event, Region};
+    /// use checkers::{Event::*, Request, Events, Event, Region};
     /// let mut events = Events::new();
-    /// events.push(Alloc(Alloc::without_backtrace(Region::new(10.into(), 10, 1))));
+    ///
+    /// let request = Request::without_backtrace(Region::new(10.into(), 10, 1));
+    /// events.push(Alloc(request));
+    ///
     /// assert_eq!(1, events.allocs());
     /// assert_eq!(0, events.frees());
     /// ```
@@ -102,13 +108,13 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Alloc, Events, Event, Region, Realloc};
+    /// use checkers::{Event::*, Request, Events, Region, Realloc};
     /// let mut events = Events::new();
     ///
-    /// events.push(Event::Realloc(Realloc::new(
+    /// events.push(Realloc(Realloc::without_backtrace(
     ///     Some(true),
     ///     Region::new(10.into(), 10, 1),
-    ///     Alloc::without_backtrace(Region::new(20.into(), 10, 1))
+    ///     Region::new(20.into(), 10, 1)
     /// )));
     ///
     /// assert_eq!(1, events.reallocs());
@@ -130,9 +136,12 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Events, Event, Region};
+    /// use checkers::{Event::*, Events, Region, Request};
     /// let mut events = Events::new();
-    /// events.push(Event::Free(Region::new(10.into(), 10, 1)));
+    ///
+    /// let request = Request::without_backtrace(Region::new(10.into(), 10, 1));
+    /// events.push(Free(request));
+    ///
     /// assert_eq!(0, events.allocs());
     /// assert_eq!(1, events.frees());
     /// ```
@@ -172,11 +181,18 @@ impl Events {
     /// # Examples
     ///
     /// ```rust
-    /// use checkers::{Alloc, Event::*, Events, Region};
+    /// use checkers::{Event::*, Events, Region, Request};
     /// let mut events = Events::new();
-    /// events.push(Alloc(Alloc::without_backtrace(Region::new(0x10.into(), 0x10, 1))));
-    /// events.push(Alloc(Alloc::without_backtrace(Region::new(0x20.into(), 0x10, 1))));
-    /// events.push(Free(Region::new(0x10.into(), 0x10, 1)));
+    ///
+    /// let request = Request::without_backtrace(Region::new(0x10.into(), 0x10, 1));
+    /// events.push(Alloc(request));
+    ///
+    /// let request = Request::without_backtrace(Region::new(0x20.into(), 0x10, 1));
+    /// events.push(Alloc(request));
+    ///
+    /// let request = Request::without_backtrace(Region::new(0x10.into(), 0x10, 1));
+    /// events.push(Free(request));
+    ///
     /// assert_eq!(0x20, events.max_memory_used().unwrap());
     /// ```
     pub fn max_memory_used(&self) -> Result<usize, Violation> {

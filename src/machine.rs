@@ -5,7 +5,7 @@ use std::{
     fmt,
 };
 
-use crate::{Alloc, AllocZeroed, Event, Pointer, Realloc, Violation};
+use crate::{AllocZeroed, Event, Pointer, Request, Violation};
 
 /// A memory region. Including its location in memory `ptr`, it's `size` and
 /// alignment `align`.
@@ -54,7 +54,7 @@ impl fmt::Display for Region {
 #[derive(Default)]
 pub struct Machine {
     /// Used memory regions.
-    regions: BTreeMap<Pointer, Alloc>,
+    regions: BTreeMap<Pointer, Request>,
     /// Current memory used according to allocations.
     pub memory_used: usize,
 }
@@ -67,25 +67,31 @@ impl Machine {
     /// Checks for a double-free:
     ///
     /// ```rust
-    /// use checkers::{Event::*, Alloc, Region, Machine};
+    /// use checkers::{Event::*, Request, Region, Machine};
     ///
     /// let mut machine = Machine::default();
     ///
-    /// assert!(machine.push(&Alloc(Alloc::without_backtrace(Region::new(0.into(), 2, 1)))).is_ok());
-    /// assert!(machine.push(&Free(Region::new(0.into(), 2, 1))).is_ok());
-    /// assert!(machine.push(&Free(Region::new(0.into(), 2, 1))).is_err());
+    /// let request = Request::without_backtrace(Region::new(0.into(), 2, 1));
+    /// assert!(machine.push(&Alloc(request)).is_ok());
+    ///
+    /// let request = Request::without_backtrace(Region::new(0.into(), 2, 1));
+    /// assert!(machine.push(&Free(request)).is_ok());
+    ///
+    /// let request = Request::without_backtrace(Region::new(0.into(), 2, 1));
+    /// assert!(machine.push(&Free(request)).is_err());
     /// ```
     ///
     /// Check for a misaligned allocation:
     ///
     /// ```rust
-    /// use checkers::{Event::*, Alloc, Region, Machine, Violation};
+    /// use checkers::{Event::*, Request, Region, Machine, Violation};
     ///
     /// let mut machine = Machine::default();
-    /// let requested = Region::new(5.into(), 2, 4);
+    /// let region = Region::new(5.into(), 2, 4);
     ///
+    /// let request = Request::without_backtrace(region);
     /// assert!(matches!(
-    ///     machine.push(&Alloc(Alloc::without_backtrace(requested))).unwrap_err(),
+    ///     machine.push(&Alloc(request)).unwrap_err(),
     ///     Violation::MisalignedAlloc { .. }
     /// ));
     /// ```
@@ -94,21 +100,22 @@ impl Machine {
     ///
     /// ```rust
     ///
-    /// use checkers::{Event::*, Alloc, Region, Machine, Violation};
+    /// use checkers::{Event::*, Request, Region, Machine, Violation};
     /// let mut machine = Machine::default();
     /// let existing = Region::new(100.into(), 100, 1);
     ///
-    /// assert!(machine.push(&Alloc(Alloc::without_backtrace(existing))).is_ok());
+    /// let request = Request::without_backtrace(existing);
+    /// assert!(machine.push(&Alloc(request)).is_ok());
     ///
-    /// let requested = Region::new(150.into(), 50, 1);
+    /// let request = Request::without_backtrace(Region::new(150.into(), 50, 1));
     /// assert!(matches!(
-    ///     machine.push(&Free(requested)).unwrap_err(),
+    ///     machine.push(&Free(request)).unwrap_err(),
     ///     Violation::MissingFree { .. }
     /// ));
     ///
-    /// let requested = Region::new(100.into(), 50, 1);
+    /// let request = Request::without_backtrace(Region::new(100.into(), 50, 1));
     /// assert!(matches!(
-    ///     machine.push(&Free(requested)).unwrap_err(),
+    ///     machine.push(&Free(request)).unwrap_err(),
     ///     Violation::IncompleteFree { .. }
     /// ));
     /// ```
@@ -118,37 +125,31 @@ impl Machine {
                 self.alloc(requested)?;
             }
             Event::Free(requested) => {
-                self.free(*requested)?;
+                self.free(requested)?;
             }
-            Event::AllocZeroed(AllocZeroed {
-                is_zeroed,
-                alloc: requested,
-            }) => {
+            Event::AllocZeroed(AllocZeroed { is_zeroed, request }) => {
                 if let Some(false) = is_zeroed {
                     return Err(Violation::NonZeroedAlloc {
-                        requested: requested.region,
+                        alloc: request.clone(),
                     });
                 }
 
-                self.alloc(requested)?;
+                self.alloc(request)?;
             }
-            Event::Realloc(Realloc {
-                is_relocated,
-                free,
-                alloc,
-            }) => {
-                if let Some(false) = is_relocated {
+            Event::Realloc(realloc) => {
+                if let Some(false) = realloc.is_relocated {
                     return Err(Violation::NonCopiedRealloc {
-                        free: *free,
-                        alloc: alloc.region,
+                        realloc: realloc.clone(),
                     });
                 }
 
-                self.free(*free)?;
-                self.alloc(alloc)?;
+                self.free(&realloc.free())?;
+                self.alloc(&realloc.alloc())?;
             }
-            Event::ReallocNull => {
-                return Err(Violation::ReallocNull {});
+            Event::ReallocNull(realloc) => {
+                return Err(Violation::ReallocNull {
+                    realloc: realloc.clone(),
+                });
             }
             // Note: the following have no effects, outside of what the erorrs
             // mean to the caller of the allocator. They could for example
@@ -163,55 +164,51 @@ impl Machine {
     }
 
     /// Process an allocation.
-    fn alloc(&mut self, requested: &Alloc) -> Result<(), Violation> {
-        if !requested.region.ptr.is_aligned_with(requested.region.align) {
+    fn alloc(&mut self, request: &Request) -> Result<(), Violation> {
+        if !request.region.ptr.is_aligned_with(request.region.align) {
             return Err(Violation::MisalignedAlloc {
-                requested: requested.region,
+                alloc: request.clone(),
             });
         }
 
-        if let Some(existing) = find_region_overlaps(&self.regions, requested.region).next() {
+        if let Some(existing) = find_region_overlaps(&self.regions, request.region).next() {
             return Err(Violation::ConflictingAlloc {
-                requested: requested.region,
-                existing: existing.region,
+                request: request.clone(),
+                existing,
             });
         }
 
-        self.memory_used = self.memory_used.saturating_add(requested.region.size);
+        self.memory_used = self.memory_used.saturating_add(request.region.size);
 
-        let existing = self.regions.insert(
-            requested.region.ptr,
-            Alloc {
-                region: requested.region,
-                backtrace: requested.backtrace.clone(),
-            },
-        );
+        let existing = self.regions.insert(request.region.ptr, request.clone());
 
         debug_assert!(existing.is_none());
         Ok(())
     }
 
     /// Process a free.
-    fn free(&mut self, requested: Region) -> Result<(), Violation> {
-        let entry = if let map::Entry::Occupied(entry) = self.regions.entry(requested.ptr) {
+    fn free(&mut self, request: &Request) -> Result<(), Violation> {
+        let entry = if let map::Entry::Occupied(entry) = self.regions.entry(request.region.ptr) {
             entry
         } else {
-            return Err(Violation::MissingFree { requested });
+            return Err(Violation::MissingFree {
+                request: request.clone(),
+            });
         };
 
         let existing = entry.get();
 
-        if !existing.region.is_same_region_as(requested) {
+        if !existing.region.is_same_region_as(request.region) {
             return Err(Violation::IncompleteFree {
-                requested,
-                existing: existing.region,
+                request: request.clone(),
+                existing: existing.clone(),
             });
         }
 
-        if existing.region.align != requested.align {
+        if existing.region.align != request.region.align {
             return Err(Violation::MisalignedFree {
-                requested,
-                existing: existing.region,
+                request: request.clone(),
+                existing: existing.clone(),
             });
         }
 
@@ -221,16 +218,16 @@ impl Machine {
     }
 
     /// Access all trailing regions (ones which have not been deallocated).
-    pub fn trailing_regions(&self) -> Vec<Alloc> {
+    pub fn trailing_regions(&self) -> Vec<Request> {
         self.regions.values().cloned().collect()
     }
 }
 
 /// Utility function to find overlapping regions.
 fn find_region_overlaps(
-    regions: &BTreeMap<Pointer, Alloc>,
+    regions: &BTreeMap<Pointer, Request>,
     needle: Region,
-) -> impl Iterator<Item = Alloc> + '_ {
+) -> impl Iterator<Item = Request> + '_ {
     let head = regions
         .range(..=needle.ptr)
         .take_while(move |(_, r)| r.region.overlaps(needle));

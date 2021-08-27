@@ -127,6 +127,12 @@ use std::{
 };
 
 mod allocator;
+#[cfg(feature = "backtrace")]
+#[path = "bt/impl.rs"]
+mod bt;
+#[cfg(not(feature = "backtrace"))]
+#[path = "bt/mock.rs"]
+mod bt;
 mod event;
 mod events;
 mod machine;
@@ -432,17 +438,17 @@ impl From<usize> for Pointer {
     }
 }
 
-/// Allocation metadata.
+/// Metadata about an allocation request.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct Alloc {
+pub struct Request {
     /// The allocated region.
     pub region: Region,
-    /// Captured backtrace.
-    pub backtrace: Option<backtrace::Backtrace>,
+    /// Captured backtrace if present.
+    pub backtrace: Option<crate::bt::Backtrace>,
 }
 
-impl Alloc {
+impl Request {
     /// Construct a new allocation without a complete backtrace.
     pub fn without_backtrace(region: Region) -> Self {
         Self {
@@ -461,13 +467,13 @@ pub struct AllocZeroed {
     /// Indicates if the region was indeed zeroed.
     pub is_zeroed: Option<bool>,
     /// The region that was allocated.
-    pub alloc: Alloc,
+    pub request: Request,
 }
 
 impl AllocZeroed {
     /// Construct a new reallocation.
-    pub fn new(is_zeroed: Option<bool>, alloc: Alloc) -> Self {
-        Self { is_zeroed, alloc }
+    pub fn new(is_zeroed: Option<bool>, request: Request) -> Self {
+        Self { is_zeroed, request }
     }
 }
 
@@ -485,16 +491,56 @@ pub struct Realloc {
     /// The region that was freed.
     pub free: Region,
     /// The region that was allocated.
-    pub alloc: Alloc,
+    pub alloc: Region,
+    /// Backtrace of the reallocation request.
+    pub backtrace: Option<crate::bt::Backtrace>,
 }
 
 impl Realloc {
-    /// Construct a new reallocation.
-    pub fn new(is_relocated: Option<bool>, free: Region, alloc: Alloc) -> Self {
+    /// Construct a new reallocation without a backtrace.
+    pub fn without_backtrace(is_relocated: Option<bool>, free: Region, alloc: Region) -> Self {
         Self {
             is_relocated,
             free,
             alloc,
+            backtrace: None,
         }
     }
+
+    /// Construct a new reallocation.
+    pub fn new(
+        is_relocated: Option<bool>,
+        free: Region,
+        alloc: Region,
+        backtrace: Option<crate::bt::Backtrace>,
+    ) -> Self {
+        Self {
+            is_relocated,
+            free,
+            alloc,
+            backtrace,
+        }
+    }
+
+    pub(crate) fn free(&self) -> Request {
+        Request {
+            region: self.free,
+            backtrace: self.backtrace.clone(),
+        }
+    }
+
+    pub(crate) fn alloc(&self) -> Request {
+        Request {
+            region: self.alloc,
+            backtrace: self.backtrace.clone(),
+        }
+    }
+}
+
+/// Description of a null reallocation. These are always considered errors.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ReallocNull {
+    /// Backtrace of the reallocation request.
+    pub backtrace: Option<crate::bt::Backtrace>,
 }

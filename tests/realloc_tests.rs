@@ -46,7 +46,7 @@ fn test_realloc() {
     assert!(snapshot.events[0].is_alloc_with(|r| r.size == 4));
     assert!(snapshot.events[1].is_realloc_with(|r| {
         // Note: not correctly relocated since we corrupted the third byte.
-        r.is_relocated == Some(false) && r.free.size == 4 && r.alloc.region.size == 16
+        r.is_relocated == Some(false) && r.free.size == 4 && r.alloc.size == 16
     }));
     assert!(snapshot.events[2].is_free_with(|r| r.size == 16));
 }
