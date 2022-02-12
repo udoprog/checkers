@@ -1,7 +1,5 @@
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    ptr,
-};
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::ptr;
 
 /// Note: allocator which intentionally doesn't allocate a zeroed region.
 struct TestAllocator;
@@ -41,8 +39,6 @@ static ALLOCATOR: checkers::Allocator<TestAllocator> = checkers::Allocator::new(
 
 #[test]
 fn test_failed_alloc_zeroed() {
-    use std::alloc::Layout;
-
     let layout = Layout::from_size_align(10, 1).unwrap();
 
     let snapshot = checkers::with(|| unsafe {
@@ -55,8 +51,6 @@ fn test_failed_alloc_zeroed() {
 
 #[test]
 fn test_failed_alloc() {
-    use std::alloc::Layout;
-
     let layout = Layout::from_size_align(10, 1).unwrap();
 
     let snapshot = checkers::with(|| unsafe {
@@ -69,17 +63,22 @@ fn test_failed_alloc() {
 
 #[test]
 fn test_failed_realloc() {
-    use std::alloc::Layout;
-
     let layout = Layout::from_size_align(10, 1).unwrap();
 
-    let ptr = unsafe { ALLOCATOR.alloc(layout) };
+    let p = unsafe { ALLOCATOR.alloc(layout) };
 
-    assert!(!ptr.is_null());
+    for n in 0..10 {
+        unsafe {
+            ptr::write(p.add(n), n as u8);
+        }
+    }
+
+    assert!(!p.is_null());
 
     let snapshot = checkers::with(|| unsafe {
-        assert_eq!(ptr::null_mut(), ALLOCATOR.realloc(ptr, layout, 20));
-        ALLOCATOR.dealloc(ptr, layout);
+        // NB: These events will fail because checkers is enabled.
+        assert_eq!(ptr::null_mut(), ALLOCATOR.realloc(p, layout, 20));
+        ALLOCATOR.dealloc(p, layout);
     });
 
     assert_eq!(2, snapshot.events.len());
