@@ -4,7 +4,10 @@ use proc_macro::TokenStream;
 use quote::quote;
 use std::num::NonZeroUsize;
 
-/// Marks a function to be run as a test in a checkers test suite.
+/// Run a `#[test]` function in checkers.
+///
+/// At the end of the test case checkers checks memory sanitation and reports
+/// any errors encountered.
 ///
 /// # Attributes
 ///

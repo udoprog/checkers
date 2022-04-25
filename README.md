@@ -1,8 +1,9 @@
 # checkers
 
-[![Documentation](https://docs.rs/checkers/badge.svg)](https://docs.rs/checkers)
-[![Crates](https://img.shields.io/crates/v/checkers.svg)](https://crates.io/crates/checkers)
-[![Actions Status](https://github.com/udoprog/checkers/workflows/Rust/badge.svg)](https://github.com/udoprog/checkers/actions)
+[<img alt="github" src="https://img.shields.io/badge/github-udoprog/checkers?style=for-the-badge&logo=github" height="20">](https://github.com/udoprog/checkers)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/checkers.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/checkers)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-checkers?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" height="20">](https://docs.rs/checkers)
+[<img alt="build status" src="https://img.shields.io/github/workflow/status/udoprog/checkers/CI/main?style=for-the-badge" height="20">](https://github.com/udoprog/checkers/actions?query=branch%3Amain)
 
 Checkers is a simple allocation sanitizer for Rust. It plugs in through the
 [global allocator] and can sanity check your unsafe Rust during integration
@@ -25,6 +26,31 @@ What it can't do:
 * Test multithreaded code. Since the allocator is global, it is difficult to
   scope the state for each test case.
 * Detect out-of-bounds accesses.
+
+### Usage
+
+Add `checkers` as a dev-dependency to your project:
+
+```toml
+checkers = "0.6.1"
+```
+
+Replace the global allocator in a [test file] and wrap tests you wish to
+memory sanitise with `#[checkers::test]`:
+
+```rust
+#[global_allocator]
+static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
+
+#[checkers::test]
+fn test_allocations() {
+    let _ = Box::into_raw(Box::new(42));
+}
+```
+
+> Note that it's important that you write your test as an *integration test*
+> by adding it to your `tests/` folder to isolate the use of the global
+> allocator.
 
 ## Safety
 
@@ -114,6 +140,7 @@ fn test_event_inspection() {
 }
 ```
 
+[test file]: https://doc.rust-lang.org/cargo/guide/project-layout.html
 [checkers-allocator]: https://docs.rs/checkers/latest/checkers/struct.Allocator.html
 [checkers-test]: https://docs.rs/checkers/latest/checkers/attr.test.html
 [checkers-with]: https://docs.rs/checkers/latest/checkers/fn.with.html
