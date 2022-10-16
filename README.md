@@ -1,8 +1,8 @@
 # checkers
 
-[<img alt="github" src="https://img.shields.io/badge/github-udoprog/checkers?style=for-the-badge&logo=github" height="20">](https://github.com/udoprog/checkers)
+[<img alt="github" src="https://img.shields.io/badge/github-udoprog/checkers-8da0cb?style=for-the-badge&logo=github" height="20">](https://github.com/udoprog/checkers)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/checkers.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/checkers)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-checkers?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" height="20">](https://docs.rs/checkers)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-checkers-66c2a5?style=for-the-badge&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" height="20">](https://docs.rs/checkers)
 [<img alt="build status" src="https://img.shields.io/github/workflow/status/udoprog/checkers/CI/main?style=for-the-badge" height="20">](https://github.com/udoprog/checkers/actions?query=branch%3Amain)
 
 Checkers is a simple allocation sanitizer for Rust. It plugs in through the
@@ -27,7 +27,9 @@ What it can't do:
   scope the state for each test case.
 * Detect out-of-bounds accesses.
 
-### Usage
+<br>
+
+## Usage
 
 Add `checkers` as a dev-dependency to your project:
 
@@ -52,6 +54,8 @@ fn test_allocations() {
 > by adding it to your `tests/` folder to isolate the use of the global
 > allocator.
 
+<br>
+
 ## Safety
 
 With the default feature set, this library performs diagnostics which will
@@ -63,6 +67,8 @@ features, but this will also produce less actionable diagnostics.
 
 In a future release, this behavior will be changed to be opt-in through feature
 flags instead of enabled by default.
+
+<br>
 
 ## Features
 
@@ -89,6 +95,8 @@ The following are features available, that changes how checkers work.
 [alloc_zeroed]: std::alloc::GlobalAlloc::alloc_zeroed
 [#1]: https://github.com/udoprog/checkers/issues/1
 
+<br>
+
 ## Examples
 
 It is recommended that you use checkers for [integration tests], which by
@@ -113,7 +121,7 @@ fn test_allocations() {
 
 The above would result in the following test output:
 
-```
+```text
 dangling region: 0x226e5784f30-0x226e5784f40 (size: 16, align: 8).
 thread 'test_leak_box' panicked at 'allocation checks failed', tests\leaky_tests.rs:4:1
 ```
@@ -148,5 +156,3 @@ fn test_event_inspection() {
 [integration tests]: https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests
 [mismatched layout]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#safety
 [see test]: https://github.com/udoprog/checkers/blob/master/tests/leaky_tests.rs
-
-License: MIT/Apache-2.0
