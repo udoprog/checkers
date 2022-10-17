@@ -89,8 +89,8 @@
 //! * `backtrace` - Enables the capture and rendering of backtraces. If
 //!   disabled, any fields containing backtraces will be `None`.
 //!
-//! [realloc]: std::alloc::GlobalAlloc::realloc
-//! [alloc_zeroed]: std::alloc::GlobalAlloc::alloc_zeroed
+//! [realloc]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#method.realloc
+//! [alloc_zeroed]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html#method.alloc_zeroed
 //! [#1]: https://github.com/udoprog/checkers/issues/1
 //!
 //! <br>
