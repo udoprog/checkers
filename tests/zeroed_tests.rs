@@ -15,10 +15,8 @@ unsafe impl GlobalAlloc for TestAllocator {
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc_zeroed(layout);
 
-        if !checkers::is_muted() {
-            if layout.size() >= 32 {
-                *ptr.add(31) = 1;
-            }
+        if !checkers::is_muted() && layout.size() >= 32 {
+            *ptr.add(31) = 1;
         }
 
         ptr

@@ -3,6 +3,7 @@ name = "checkers"
 version = "0.6.2"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2018"
+rust-version = "1.65"
 description = "A sanity checker for global allocations."
 documentation = "https://docs.rs/checkers"
 readme = "README.md"

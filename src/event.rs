@@ -143,11 +143,9 @@ impl Event {
     /// assert!(Event::ReallocFailed.is_failed());
     /// ```
     pub fn is_failed(&self) -> bool {
-        match self {
-            Self::AllocFailed { .. }
-            | Self::AllocZeroedFailed { .. }
-            | Self::ReallocFailed { .. } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::AllocFailed { .. } | Self::AllocZeroedFailed { .. } | Self::ReallocFailed { .. }
+        )
     }
 }
