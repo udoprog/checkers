@@ -34,7 +34,7 @@ What it can't do:
 Add `checkers` as a dev-dependency to your project:
 
 ```toml
-checkers = "0.6.3"
+checkers = "0.6.4"
 ```
 
 Replace the global allocator in a [test file] and wrap tests you wish to
