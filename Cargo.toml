@@ -3,7 +3,7 @@ name = "checkers"
 version = "0.6.2"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2018"
-rust-version = "1.65"
+rust-version = "1.56"
 description = "A sanity checker for global allocations."
 documentation = "https://docs.rs/checkers"
 readme = "README.md"
@@ -14,9 +14,9 @@ keywords = ["allocator", "heap", "memory"]
 categories = ["development-tools", "memory-management"]
 
 [dependencies]
-checkers-macros = {path = "./macros", version = "0.6.2", optional = true}
-fxhash = {version = "0.2.1", optional = true}
-backtrace = {version = "0.3.61", optional = true}
+checkers-macros = { path = "./macros", version = "0.6.2", optional = true }
+fxhash = { version = "0.2.1", optional = true }
+backtrace = { version = "0.3.61", optional = true }
 
 [dev-dependencies]
 lazy_static = "1.4.0"
