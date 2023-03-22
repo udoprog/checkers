@@ -1,6 +1,6 @@
 [package]
 name = "checkers"
-version = "0.6.3"
+version = "0.6.4"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 edition = "2018"
 rust-version = "1.56"
