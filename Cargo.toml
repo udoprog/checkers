@@ -9,7 +9,7 @@ documentation = "https://docs.rs/checkers"
 readme = "README.md"
 homepage = "https://github.com/udoprog/checkers"
 repository = "https://github.com/udoprog/checkers"
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 keywords = ["allocator", "heap", "memory"]
 categories = ["development-tools", "memory-management"]
 
