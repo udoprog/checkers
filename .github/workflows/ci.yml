@@ -7,21 +7,23 @@ on:
       - main
 
 jobs:
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@1.65
-    - run: cargo test --workspace --all-targets
-    - run: cargo test --workspace --doc
-
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ['1.60', stable]
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{matrix.rust}}
+    - uses: Swatinem/rust-cache@v2
+    - run: cargo build --workspace --all-targets
     - run: cargo test --workspace --all-targets
+      if: matrix.rust == 'stable'
     - run: cargo test --workspace --doc
+      if: matrix.rust == 'stable'
 
   clippy:
     runs-on: ubuntu-latest
