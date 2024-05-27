@@ -130,7 +130,9 @@
 //! #[global_allocator]
 //! static ALLOCATOR: checkers::Allocator = checkers::Allocator::system();
 //!
+//! # /*
 //! #[test]
+//! # */
 //! fn test_event_inspection() {
 //!     let snapshot = checkers::with(|| {
 //!         let _ = vec![1, 2, 3, 4];
@@ -185,8 +187,8 @@ thread_local! {
     ///
     /// Feel free to interact with this directly, but it's primarily used
     /// through the [`test`](crate::test) macro.
-    static STATE: RefCell<State> = RefCell::new(State::new());
-    static MUTED: Cell<bool> = Cell::new(true);
+    static STATE: RefCell<State> = const { RefCell::new(State::new()) };
+    static MUTED: Cell<bool> = const { Cell::new(true) };
 }
 
 /// Perform an operation, while having access to the thread-local state.
@@ -427,6 +429,13 @@ impl State {
     /// See [Events::validate] for more documentation.
     pub fn validate(&self, errors: &mut Vec<Violation>) {
         self.events.validate(errors);
+    }
+}
+
+impl Default for State {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 

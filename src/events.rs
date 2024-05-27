@@ -209,6 +209,13 @@ impl Events {
     }
 }
 
+impl Default for Events {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ops::Deref for Events {
     type Target = [Event];
 
