@@ -567,14 +567,14 @@ impl Realloc {
     pub(crate) fn free(&self) -> Request {
         Request {
             region: self.free,
-            backtrace: self.backtrace.clone(),
+            backtrace: self.backtrace,
         }
     }
 
     pub(crate) fn alloc(&self) -> Request {
         Request {
             region: self.alloc,
-            backtrace: self.backtrace.clone(),
+            backtrace: self.backtrace,
         }
     }
 }

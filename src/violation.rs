@@ -105,12 +105,12 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &request.backtrace {
                     writeln!(f)?;
-                    write!(f, "Allocation Backtrace: {:?}", bt)?;
+                    write!(f, "Allocation Backtrace: {bt:?}")?;
                 }
 
                 if let Some(bt) = &existing.backtrace {
                     writeln!(f)?;
-                    write!(f, "Existing Allocation Backtrace: {:?}", bt)?;
+                    write!(f, "Existing Allocation Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -124,7 +124,7 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &alloc.backtrace {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {:?}", bt)?;
+                    write!(f, "Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -138,7 +138,7 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &realloc.backtrace {
                     writeln!(f)?;
-                    write!(f, "Reallocation Backtrace: {:?}", bt)?;
+                    write!(f, "Reallocation Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -148,7 +148,7 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &realloc.backtrace {
                     writeln!(f)?;
-                    write!(f, "Reallocation Backtrace: {:?}", bt)?;
+                    write!(f, "Reallocation Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -158,7 +158,7 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &alloc.backtrace {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {:?}", bt)?;
+                    write!(f, "Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -172,12 +172,12 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &request.backtrace {
                     writeln!(f)?;
-                    write!(f, "Requested Backtrace: {:?}", bt)?;
+                    write!(f, "Requested Backtrace: {bt:?}")?;
                 }
 
                 if let Some(bt) = &request.backtrace {
                     writeln!(f)?;
-                    write!(f, "Existing Backtrace: {:?}", bt)?;
+                    write!(f, "Existing Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -191,12 +191,12 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &request.backtrace {
                     writeln!(f)?;
-                    write!(f, "Requested Backtrace: {:?}", bt)?;
+                    write!(f, "Requested Backtrace: {bt:?}")?;
                 }
 
                 if let Some(bt) = &request.backtrace {
                     writeln!(f)?;
-                    write!(f, "Existing Backtrace: {:?}", bt)?;
+                    write!(f, "Existing Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -206,7 +206,7 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &request.backtrace {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {:?}", bt)?;
+                    write!(f, "Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
@@ -216,7 +216,7 @@ impl fmt::Display for Violation {
 
                 if let Some(bt) = &alloc.backtrace {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {:?}", bt)?;
+                    write!(f, "Backtrace: {bt:?}")?;
                 }
 
                 Ok(())
