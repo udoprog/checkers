@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{backtrace::BacktraceStatus, fmt};
 
 use crate::{Realloc, ReallocNull, Region, Request};
 
@@ -103,14 +103,14 @@ impl fmt::Display for Violation {
                     request.region, existing.region
                 )?;
 
-                if let Some(bt) = &request.backtrace {
+                if request.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Allocation Backtrace: {bt:?}")?;
+                    write!(f, "Allocation Backtrace: {:?}", request.backtrace)?;
                 }
 
-                if let Some(bt) = &existing.backtrace {
+                if existing.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Existing Allocation Backtrace: {bt:?}")?;
+                    write!(f, "Existing Allocation Backtrace: {:?}", existing.backtrace)?;
                 }
 
                 Ok(())
@@ -122,9 +122,9 @@ impl fmt::Display for Violation {
                     alloc.region
                 )?;
 
-                if let Some(bt) = &alloc.backtrace {
+                if alloc.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {bt:?}")?;
+                    write!(f, "Backtrace: {:?}", alloc.backtrace)?;
                 }
 
                 Ok(())
@@ -136,9 +136,9 @@ impl fmt::Display for Violation {
                     realloc.free, realloc.alloc,
                 )?;
 
-                if let Some(bt) = &realloc.backtrace {
+                if realloc.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Reallocation Backtrace: {bt:?}")?;
+                    write!(f, "Reallocation Backtrace: {:?}", realloc.backtrace)?;
                 }
 
                 Ok(())
@@ -146,9 +146,9 @@ impl fmt::Display for Violation {
             Self::ReallocNull { realloc } => {
                 write!(f, "Tried to reallocate null pointer")?;
 
-                if let Some(bt) = &realloc.backtrace {
+                if realloc.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Reallocation Backtrace: {bt:?}")?;
+                    write!(f, "Reallocation Backtrace: {:?}", realloc.backtrace)?;
                 }
 
                 Ok(())
@@ -156,9 +156,9 @@ impl fmt::Display for Violation {
             Self::MisalignedAlloc { alloc } => {
                 write!(f, "Allocated region ({}) is misaligned.", alloc.region)?;
 
-                if let Some(bt) = &alloc.backtrace {
+                if alloc.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {bt:?}")?;
+                    write!(f, "Backtrace: {:?}", alloc.backtrace)?;
                 }
 
                 Ok(())
@@ -170,14 +170,14 @@ impl fmt::Display for Violation {
                     request.region, existing.region
                 )?;
 
-                if let Some(bt) = &request.backtrace {
+                if request.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Requested Backtrace: {bt:?}")?;
+                    write!(f, "Requested Backtrace: {:?}", request.backtrace)?;
                 }
 
-                if let Some(bt) = &request.backtrace {
+                if request.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Existing Backtrace: {bt:?}")?;
+                    write!(f, "Existing Backtrace: {:?}", request.backtrace)?;
                 }
 
                 Ok(())
@@ -189,14 +189,14 @@ impl fmt::Display for Violation {
                     request.region, existing.region
                 )?;
 
-                if let Some(bt) = &request.backtrace {
+                if request.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Requested Backtrace: {bt:?}")?;
+                    write!(f, "Requested Backtrace: {:?}", request.backtrace)?;
                 }
 
-                if let Some(bt) = &request.backtrace {
+                if request.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Existing Backtrace: {bt:?}")?;
+                    write!(f, "Existing Backtrace: {:?}", request.backtrace)?;
                 }
 
                 Ok(())
@@ -204,9 +204,9 @@ impl fmt::Display for Violation {
             Self::MissingFree { request } => {
                 write!(f, "Freed missing region ({})", request.region)?;
 
-                if let Some(bt) = &request.backtrace {
+                if request.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {bt:?}")?;
+                    write!(f, "Backtrace: {:?}", request.backtrace)?;
                 }
 
                 Ok(())
@@ -214,9 +214,9 @@ impl fmt::Display for Violation {
             Self::Leaked { alloc } => {
                 write!(f, "Dangling region ({})", alloc.region)?;
 
-                if let Some(bt) = &alloc.backtrace {
+                if alloc.backtrace.status() == BacktraceStatus::Captured {
                     writeln!(f)?;
-                    write!(f, "Backtrace: {bt:?}")?;
+                    write!(f, "Backtrace: {:?}", alloc.backtrace)?;
                 }
 
                 Ok(())

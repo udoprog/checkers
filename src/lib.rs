@@ -158,16 +158,12 @@
 
 #![deny(missing_docs)]
 
+use std::backtrace::Backtrace;
 use std::cell::{Cell, RefCell};
 use std::fmt;
+use std::sync::Arc;
 
 mod allocator;
-#[cfg(feature = "backtrace")]
-#[path = "bt/impl.rs"]
-mod bt;
-#[cfg(not(feature = "backtrace"))]
-#[path = "bt/mock.rs"]
-mod bt;
 mod event;
 mod events;
 mod machine;
@@ -446,35 +442,41 @@ impl Default for State {
 pub struct Pointer(usize);
 
 impl Pointer {
-    /// Construct a new default poitner.
+    /// Construct a new default pointer.
+    #[inline]
     pub const fn new() -> Self {
         Self(0)
     }
 
     /// Add the given offset to the current pointer.
+    #[inline]
     pub fn saturating_add(self, n: usize) -> Self {
         Self(self.0.saturating_add(n))
     }
 
     /// Test if pointer is aligned with the given argument.
+    #[inline]
     pub fn is_aligned_with(self, n: usize) -> bool {
         self.0 % n == 0
     }
 }
 
 impl fmt::Display for Pointer {
+    #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "{:?}", &(self.0 as *const ()))
+        write!(fmt, "0x{:08x}", self.0)
     }
 }
 
 impl From<*mut u8> for Pointer {
+    #[inline]
     fn from(value: *mut u8) -> Self {
-        Self(value as usize)
+        Self(value.addr())
     }
 }
 
 impl From<usize> for Pointer {
+    #[inline]
     fn from(value: usize) -> Self {
         Self(value)
     }
@@ -487,7 +489,7 @@ pub struct Request {
     /// The allocated region.
     pub region: Region,
     /// Captured backtrace if present.
-    pub backtrace: Option<crate::bt::Backtrace>,
+    pub backtrace: Arc<Backtrace>,
 }
 
 impl Request {
@@ -495,7 +497,7 @@ impl Request {
     pub fn without_backtrace(region: Region) -> Self {
         Self {
             region,
-            backtrace: None,
+            backtrace: Arc::new(Backtrace::disabled()),
         }
     }
 }
@@ -535,7 +537,7 @@ pub struct Realloc {
     /// The region that was allocated.
     pub alloc: Region,
     /// Backtrace of the reallocation request.
-    pub backtrace: Option<crate::bt::Backtrace>,
+    pub backtrace: Arc<Backtrace>,
 }
 
 impl Realloc {
@@ -545,7 +547,7 @@ impl Realloc {
             is_relocated,
             free,
             alloc,
-            backtrace: None,
+            backtrace: Arc::new(Backtrace::disabled()),
         }
     }
 
@@ -554,27 +556,27 @@ impl Realloc {
         is_relocated: Option<bool>,
         free: Region,
         alloc: Region,
-        backtrace: Option<crate::bt::Backtrace>,
+        backtrace: Backtrace,
     ) -> Self {
         Self {
             is_relocated,
             free,
             alloc,
-            backtrace,
+            backtrace: Arc::new(backtrace),
         }
     }
 
     pub(crate) fn free(&self) -> Request {
         Request {
             region: self.free,
-            backtrace: self.backtrace,
+            backtrace: self.backtrace.clone(),
         }
     }
 
     pub(crate) fn alloc(&self) -> Request {
         Request {
             region: self.alloc,
-            backtrace: self.backtrace,
+            backtrace: self.backtrace.clone(),
         }
     }
 }
@@ -584,5 +586,5 @@ impl Realloc {
 #[non_exhaustive]
 pub struct ReallocNull {
     /// Backtrace of the reallocation request.
-    pub backtrace: Option<crate::bt::Backtrace>,
+    pub backtrace: Arc<Backtrace>,
 }

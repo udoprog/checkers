@@ -1,5 +1,8 @@
-use crate::{AllocZeroed, Event, Realloc, ReallocNull, Region, Request};
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::backtrace::Backtrace;
+use std::sync::Arc;
+
+use crate::{AllocZeroed, Event, Realloc, ReallocNull, Region, Request};
 
 /// Allocator that needs to be installed.
 ///
@@ -73,7 +76,7 @@ where
                 align: layout.align(),
             };
 
-            let backtrace = crate::with_muted(crate::bt::capture);
+            let backtrace = crate::with_muted(|| Arc::new(Backtrace::capture()));
 
             s.borrow_mut()
                 .events
@@ -91,7 +94,7 @@ where
         }
 
         crate::with_state(move |s| {
-            let backtrace = crate::with_muted(crate::bt::capture);
+            let backtrace = crate::with_muted(|| Arc::new(Backtrace::capture()));
 
             s.borrow_mut().events.push(Event::Free(Request {
                 region: Region {
@@ -125,7 +128,7 @@ where
             #[cfg(not(feature = "zeroed"))]
             let is_zeroed = None;
 
-            let backtrace = crate::with_muted(crate::bt::capture);
+            let backtrace = crate::with_muted(|| Arc::new(Backtrace::capture()));
 
             let request = Request {
                 region: Region {
@@ -149,7 +152,7 @@ where
         // scenario gracefully.
         if crate::is_muted() || ptr.is_null() {
             if ptr.is_null() {
-                let backtrace = crate::with_muted(crate::bt::capture);
+                let backtrace = crate::with_muted(|| Arc::new(Backtrace::capture()));
 
                 crate::with_state(|s| {
                     s.borrow_mut()
@@ -190,7 +193,7 @@ where
             #[cfg(not(feature = "realloc"))]
             let is_relocated = None;
 
-            let backtrace = crate::with_muted(crate::bt::capture);
+            let backtrace = crate::with_muted(|| Arc::new(Backtrace::capture()));
 
             let free = Region {
                 ptr: old_ptr,
