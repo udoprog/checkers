@@ -17,5 +17,8 @@ pub(crate) unsafe fn is_zeroed_ptr(ptr: *const u8, len: usize) -> bool {
 #[cfg(feature = "realloc")]
 pub(crate) unsafe fn hash_ptr(ptr: *const u8, len: usize) -> impl Eq {
     debug_assert!(!ptr.is_null());
-    fxhash::hash64(std::slice::from_raw_parts(ptr, len))
+    use std::hash::Hasher;
+    let mut hasher = rustc_hash::FxHasher::default();
+    hasher.write(std::slice::from_raw_parts(ptr, len));
+    hasher.finish()
 }
