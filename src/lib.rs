@@ -31,7 +31,7 @@
 //! Add `checkers` as a dev-dependency to your project:
 //!
 //! ```toml
-//! checkers = "0.7.0"
+//! checkers = "0.7.1"
 //! ```
 //!
 //! Replace the global allocator in a [test file] and wrap tests you wish to
